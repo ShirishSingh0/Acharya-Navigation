@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#ffffff">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>Acharya Campus Navigator</title>
+
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icon-192.png">
+
+  <!-- Fonts: Proxima Nova alternative (Inter) & system fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=SF+Pro+Display:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
+  
+  <link rel="stylesheet" href="styles.css?v=11">
+</head>
+<body>
+
+  <!-- MAIN APP SCREENS -->
+  <div id="screen-map" class="screen active">
+    
+    <!-- FLOATING SEARCH (Apple Maps Style) -->
+    <div id="search-panel" class="search-panel">
+      <div class="search-box">
+        <i class="fa-solid fa-magnifying-glass search-ico"></i>
+        <input type="text" id="search-input" placeholder="Search buildings, faculty…" autocomplete="off">
+        <button id="search-clear" class="search-clear-btn" style="display:none;"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div id="search-results" class="search-dropdown"></div>
+    </div>
+
+    <!-- FILTER PILLS -->
+    <div id="filter-bar" class="filter-bar">
+      <button class="chip active" data-type="all">All</button>
+      <button class="chip" data-type="academic">Academic</button>
+      <button class="chip" data-type="facility">Facilities</button>
+      <button class="chip" data-type="sports">Sports</button>
+      <button class="chip" data-type="nature">Nature</button>
+    </div>
+
+    <!-- MAP CONTAINER -->
+    <div id="map"></div>
+    
+    <!-- MAP ACTIONS (My Location, Add, Sim) -->
+    <div class="map-actions-group">
+      <button id="sim-toggle-btn" class="map-fab mini" title="GPS Simulator"><i class="fa-solid fa-satellite-dish"></i></button>
+      <button id="my-location-btn" class="map-fab" title="My Location"><i class="fa-solid fa-location-arrow"></i></button>
+    </div>
+    
+    <!-- DRAWING & EDITING ACTIONS -->
+    <div class="edit-actions-group">
+      <button id="btn-lock-map" class="map-fab mini"><i class="fa-solid fa-lock-open"></i></button>
+      <button id="btn-draw-road" class="map-fab mini"><i class="fa-solid fa-road"></i></button>
+    </div>
+
+    <!-- ADD BUILDING PANEL (floating bottom card — doesn't block map) -->
+    <div id="add-bldg-modal" class="add-bldg-card" style="display:none;">
+      <div class="add-bldg-header">
+        <h3><i class="fa-solid fa-map-pin"></i> Add Building</h3>
+        <button id="btn-cancel-bldg" class="sheet-close-btn"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <p class="add-bldg-hint"><i class="fa-solid fa-hand-pointer"></i> Tap anywhere on the map to place it</p>
+      <div class="add-bldg-fields">
+        <input type="text" id="new-bldg-name" class="form-input" placeholder="Building name">
+        <div class="add-bldg-row">
+          <select id="new-bldg-type" class="form-input">
+            <option value="academic">Academic</option>
+            <option value="facility">Facility</option>
+            <option value="sports">Sports</option>
+            <option value="nature">Nature</option>
+            <option value="gate">Gate</option>
+          </select>
+          <button id="btn-save-bldg" class="fbtn save" disabled>Save</button>
+        </div>
+        <textarea id="new-bldg-desc" class="form-input" rows="1" placeholder="Description (optional)"></textarea>
+      </div>
+      <div class="add-bldg-coords" id="new-bldg-coords">📍 Not set — tap the map!</div>
+    </div>
+
+    <!-- BUILDING DETAIL SHEET (Apple Maps Style Bottom Sheet) -->
+    <div id="detail-sheet" class="detail-sheet">
+      <div class="sheet-puller"></div>
+      <div class="sheet-header">
+        <h2 id="sheet-name" class="sheet-name">Building Name</h2>
+        <span id="sheet-badge" class="sheet-badge">Academic</span>
+        <button id="sheet-close" class="sheet-close-btn"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="sheet-actions">
+        <button id="btn-navigate" class="action-btn navigate-btn">
+          <div class="action-icon"><i class="fa-solid fa-car"></i></div>
+          <span>Directions</span>
+        </button>
+        <button id="btn-drag-hint" class="action-btn drag-btn">
+          <div class="action-icon"><i class="fa-solid fa-up-down-left-right"></i></div>
+          <span>Move Pin</span>
+        </button>
+        <button id="btn-delete-bldg" class="action-btn delete-btn">
+          <div class="action-icon delete-icon"><i class="fa-solid fa-trash-can"></i></div>
+          <span>Delete</span>
+        </button>
+      </div>
+      <div class="sheet-body" id="sheet-body">
+        <p id="sheet-desc" class="sheet-desc">Description here.</p>
+        
+        <div class="directory-section">
+          <div class="directory-header">
+            <h3>Directory</h3>
+            <button id="btn-add-dept-toggle" class="add-text-btn">+ Add Dept</button>
+          </div>
+          
+          <div id="form-add-dept" class="inline-form" style="display:none;">
+            <input type="text" id="input-dept-name" class="form-input" placeholder="Department name…">
+            <div class="form-btns"><button id="btn-cancel-dept" class="fbtn cancel">Cancel</button><button id="btn-save-dept" class="fbtn save">Add</button></div>
+          </div>
+          <div id="form-add-teacher" class="inline-form" style="display:none;">
+            <input type="hidden" id="input-teacher-dept-id">
+            <input type="text" id="input-teacher-name" class="form-input" placeholder="Faculty name…">
+            <div class="form-btns"><button id="btn-cancel-teacher" class="fbtn cancel">Cancel</button><button id="btn-save-teacher" class="fbtn save">Add</button></div>
+          </div>
+          
+          <div id="directory-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- NAVIGATION HUD -->
+    <div id="nav-hud" class="nav-hud">
+      <div class="hud-top">
+        <div class="hud-eta-box">
+          <span id="hud-nav-eta" class="hud-eta">— min</span>
+          <span id="hud-nav-distance" class="hud-distance">—</span>
+        </div>
+        <button id="btn-stop-nav" class="hud-stop-btn">End</button>
+      </div>
+      <div class="hud-instruction" id="hud-nav-instruction">Routing...</div>
+    </div>
+
+    <!-- SIMULATOR PANEL -->
+    <div id="simulator-panel" class="sim-panel hidden">
+      <div class="sim-title">GPS SIMULATOR</div>
+      <p class="sim-hint">Tap map to teleport</p>
+      <button id="sim-walk-btn" class="sim-walk-btn" style="display:none;"><i class="fa-solid fa-person-walking"></i> Walk Route</button>
+    </div>
+  </div>
+
+  <!-- INDEX SCREEN -->
+  <div id="screen-index" class="screen">
+    <div class="index-header">
+      <h2>Campus Directory</h2>
+      <div class="index-search">
+        <i class="fa-solid fa-search"></i>
+        <input type="text" id="index-search-input" placeholder="Search everywhere...">
+      </div>
+    </div>
+    <div class="index-list" id="index-list-container">
+      <!-- Generated via JS -->
+    </div>
+  </div>
+
+  <!-- BOTTOM NAV BAR (Hinge Style) -->
+  <nav class="bottom-nav">
+    <button class="nav-item active" data-target="screen-map">
+      <i class="fa-solid fa-map"></i>
+      <span>Map</span>
+    </button>
+    <button class="nav-item" data-target="screen-index">
+      <i class="fa-solid fa-list-ul"></i>
+      <span>Index</span>
+    </button>
+    <button class="nav-item" id="nav-add-bldg">
+      <i class="fa-solid fa-plus-circle"></i>
+      <span>Add</span>
+    </button>
+  </nav>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script src="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+  <script src="app.js?v=11"></script>
+</body>
+</html>

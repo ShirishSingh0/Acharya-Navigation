@@ -1,0 +1,10 @@
+{
+  "appId": "com.acharya.navigator",
+  "appName": "Acharya Navigator",
+  "webDir": ".",
+  "bundledWebRuntime": false,
+  "android": {
+    "allowMixedContent": true
+  },
+  "plugins": {}
+}

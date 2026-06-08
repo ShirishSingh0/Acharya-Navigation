@@ -1,0 +1,23 @@
+{
+  "name": "acharya-campus-navigator",
+  "version": "1.0.0",
+  "description": "Interactive campus navigation map for Acharya Institutes, Bangalore",
+  "main": "index.html",
+  "scripts": {
+    "build": "echo 'Static site - no build needed'",
+    "cap:init": "npx cap init \"Acharya Navigator\" com.acharya.navigator --web-dir .",
+    "cap:add": "npx cap add android",
+    "cap:copy": "npx cap copy android",
+    "cap:open": "npx cap open android",
+    "cap:sync": "npx cap sync android",
+    "apk:build": "cd android && .\\gradlew assembleDebug",
+    "apk:full": "npm run cap:copy && npm run apk:build"
+  },
+  "dependencies": {
+    "@capacitor/core": "^6.0.0",
+    "@capacitor/android": "^6.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.0.0"
+  }
+}

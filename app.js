@@ -1,5 +1,5 @@
 // ============================================================================
-// ACHARYA CAMPUS NAVIGATOR v6 — OSRM Free Routing + Apple Maps UI
+// ACHARYA CAMPUS NAVIGATOR v7 — Bulletproof Navigation
 // ============================================================================
 
 // ── STATE ────────────────────────────────────────────────────────────────────
@@ -9,6 +9,10 @@ let navActive = false, navTarget = null, routeLayers = [];
 let simActive = false, watchId = null;
 let isAddingBldg = false, newBldgLoc = null;
 let isLocked = true;
+
+// Routing state
+let routeRequestId = 0;       // Incremented per request, prevents stale responses
+let routeDebounceTimer = null; // Prevents GPS flooding OSRM
 
 const CAMPUS_CENTER = [13.084, 77.4838];
 
@@ -84,7 +88,7 @@ function initMap() {
     if (simActive && !isAddingBldg) {
       userLoc = { lat: e.latlng.lat, lng: e.latlng.lng };
       updateUserMarker();
-      if (navActive) fetchAndDrawRoute();
+      if (navActive) requestRouteUpdate();
     }
   });
 }
@@ -146,11 +150,10 @@ function renderMarkers() {
         db[i].lat = +p.lat.toFixed(6);
         db[i].lng = +p.lng.toFixed(6);
         saveDB();
-        // If this building is the active nav target, re-route to new position
         if (navTarget && navTarget.id === b.id) {
           navTarget.lat = db[i].lat;
           navTarget.lng = db[i].lng;
-          fetchAndDrawRoute();
+          requestRouteUpdate();
         }
       }
     });
@@ -198,7 +201,6 @@ window.addEventListener("deviceorientationabsolute", (e) => {
 
 // ── BUILDING SELECTION ───────────────────────────────────────────────────────
 function selectBuilding(id) {
-  // If navigating to a different building, stop old nav first
   if (navActive) { stopNav(); }
 
   if (selBldg) { const el = document.getElementById(`cm-${selBldg.id}`); if (el) el.classList.remove("selected"); }
@@ -229,18 +231,10 @@ function deleteBuilding() {
   if (!selBldg) return;
   const name = selBldg.name;
   if (!confirm(`Are you sure you want to delete "${name}"?\n\nThis action cannot be undone.`)) return;
-  
-  // Remove marker from map
   if (markers[selBldg.id]) { map.removeLayer(markers[selBldg.id]); delete markers[selBldg.id]; }
-  
-  // Stop navigation if navigating to this building
   if (navTarget && navTarget.id === selBldg.id) { stopNav(); }
-  
-  // Remove from database
   db = db.filter(b => b.id !== selBldg.id);
   saveDB();
-  
-  // Close sheet and refresh
   selBldg = null;
   document.getElementById("detail-sheet").classList.remove("open");
   renderMarkers();
@@ -262,82 +256,88 @@ function renderIndex() {
   });
 }
 
-// ── ROUTING (OSRM — 100% FREE, NO API KEY) ──────────────────────────────────
+// ── ROUTING ENGINE (BULLETPROOF) ─────────────────────────────────────────────
 
 function clearRoute() {
-  routeLayers.forEach(l => map.removeLayer(l));
+  routeLayers.forEach(l => { try { map.removeLayer(l); } catch(e) {} });
   routeLayers = [];
+}
+
+// Debounced route update — prevents GPS flooding
+function requestRouteUpdate() {
+  if (routeDebounceTimer) clearTimeout(routeDebounceTimer);
+  routeDebounceTimer = setTimeout(() => {
+    fetchAndDrawRoute();
+  }, 800); // Wait 800ms of GPS silence before re-routing
+}
+
+// Fetch with timeout helper
+function fetchWithTimeout(url, timeoutMs = 8000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { signal: controller.signal }).finally(() => clearTimeout(timer));
 }
 
 async function fetchAndDrawRoute() {
   if (!navTarget) return;
-  
+
+  const thisRequestId = ++routeRequestId; // Unique ID for this request
   const hud = document.getElementById("hud-nav-instruction");
   hud.textContent = "Calculating route…";
+
   clearRoute();
 
-  const from = `${userLoc.lng},${userLoc.lat}`;
-  const to = `${navTarget.lng},${navTarget.lat}`;
-  const url = `https://router.project-osrm.org/route/v1/foot/${from};${to}?overview=full&geometries=geojson&steps=true`;
+  const fromLng = userLoc.lng, fromLat = userLoc.lat;
+  const toLng = navTarget.lng, toLat = navTarget.lat;
 
-  try {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    if (data.code !== "Ok" || !data.routes?.length) throw new Error("No route");
+  // Try OSRM profiles in order: foot → driving → straight line fallback
+  const profiles = ["foot", "driving"];
+  let routeData = null;
 
-    const route = data.routes[0];
-    const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
-    const distMeters = route.distance;
-    const durationSecs = route.duration;
+  for (const profile of profiles) {
+    const url = `https://router.project-osrm.org/route/v1/${profile}/${fromLng},${fromLat};${toLng},${toLat}?overview=full&geometries=geojson&steps=true`;
+    try {
+      const res = await fetchWithTimeout(url, 8000);
+      if (!res.ok) continue;
+      const data = await res.json();
+      if (data.code === "Ok" && data.routes && data.routes.length > 0) {
+        routeData = data.routes[0];
+        // For driving profile, recalculate duration as walking speed (~80m/min)
+        if (profile === "driving") {
+          routeData._walkingDuration = routeData.distance / 1.33; // 80m/min = 1.33m/s
+        }
+        break;
+      }
+    } catch (err) {
+      console.warn(`OSRM ${profile} failed:`, err.message);
+      continue;
+    }
+  }
+
+  // Check if this request is still the latest (prevents stale draws)
+  if (thisRequestId !== routeRequestId) return;
+
+  if (routeData) {
+    // ── SUCCESS: Draw the OSRM route ──
+    const coords = routeData.geometry.coordinates.map(c => [c[1], c[0]]);
+    const distMeters = routeData.distance;
+    const durationSecs = routeData._walkingDuration || routeData.duration;
     const mins = Math.max(1, Math.round(durationSecs / 60));
 
-    // ── Draw multi-layer Apple Maps route ──
-    // Layer 1: Wide glow shadow
-    routeLayers.push(
-      L.polyline(coords, { color: '#007aff', opacity: 0.12, weight: 18, lineCap: 'round', lineJoin: 'round', interactive: false }).addTo(map)
-    );
-    // Layer 2: White border (gives the road-casing effect)
-    routeLayers.push(
-      L.polyline(coords, { color: '#ffffff', opacity: 0.95, weight: 10, lineCap: 'round', lineJoin: 'round', interactive: false }).addTo(map)
-    );
-    // Layer 3: Main blue route
-    routeLayers.push(
-      L.polyline(coords, { color: '#007aff', opacity: 0.9, weight: 7, lineCap: 'round', lineJoin: 'round', interactive: false }).addTo(map)
-    );
-    // Layer 4: Animated direction dashes (shows direction of travel)
-    routeLayers.push(
-      L.polyline(coords, { color: '#4da6ff', opacity: 0.6, weight: 3, lineCap: 'round', dashArray: '2,12', className: 'route-arrow-anim', interactive: false }).addTo(map)
-    );
+    drawRouteLines(coords);
+    drawRouteMarkers(coords);
 
-    // ── Start marker (green dot) ──
-    const startIcon = L.divIcon({
-      className: '',
-      html: `<div class="route-endpoint start"><i class="fa-solid fa-circle"></i></div>`,
-      iconSize: [20, 20], iconAnchor: [10, 10]
-    });
-    routeLayers.push(L.marker(coords[0], { icon: startIcon, interactive: false }).addTo(map));
+    // Fit map to route
+    map.fitBounds(L.latLngBounds(coords), { padding: [80, 100], maxZoom: 18 });
 
-    // ── End marker (flag with building name) ──
-    const endIcon = L.divIcon({
-      className: '',
-      html: `<div class="route-endpoint end"><i class="fa-solid fa-location-dot"></i><span class="route-end-label">${SHORT[navTarget.name] || navTarget.name}</span></div>`,
-      iconSize: [24, 24], iconAnchor: [12, 24]
-    });
-    routeLayers.push(L.marker(coords[coords.length - 1], { icon: endIcon, interactive: false }).addTo(map));
+    // Update HUD
+    updateHUD(distMeters, mins);
 
-    // ── Fit map ──
-    const bounds = L.latLngBounds(coords);
-    map.fitBounds(bounds, { padding: [80, 100] });
-
-    // ── Update HUD ──
-    document.getElementById("hud-nav-distance").textContent = distMeters > 1000 ? (distMeters/1000).toFixed(1) + " km" : Math.round(distMeters) + " m";
-    document.getElementById("hud-nav-eta").textContent = mins + " min";
-
+    // Navigation instruction
     if (distMeters < 25) {
-      hud.textContent = "🎉 You've arrived at " + navTarget.name;
+      hud.textContent = "🎉 You've arrived at " + (SHORT[navTarget.name] || navTarget.name);
     } else {
-      const steps = route.legs[0].steps;
+      const steps = routeData.legs[0].steps;
       if (steps.length > 1 && steps[0].maneuver) {
         const dir = steps[0].maneuver.modifier || "";
         const road = steps[0].name || "the path";
@@ -347,19 +347,67 @@ async function fetchAndDrawRoute() {
       }
     }
 
-  } catch (err) {
-    console.error("OSRM routing failed:", err);
-    const coords = [[userLoc.lat, userLoc.lng], [navTarget.lat, navTarget.lng]];
+  } else {
+    // ── FALLBACK: Straight line when OSRM is completely unavailable ──
+    console.warn("All OSRM profiles failed, using straight-line fallback");
+    const coords = [[fromLat, fromLng], [toLat, toLng]];
+
     routeLayers.push(
       L.polyline(coords, { color: '#007aff', opacity: 0.5, weight: 5, dashArray: '10,8', lineCap: 'round' }).addTo(map)
     );
     map.fitBounds(L.latLngBounds(coords), { padding: [80, 80] });
+
     const d = haversine(userLoc, navTarget);
     const mins = Math.max(1, Math.ceil(d / 80));
-    document.getElementById("hud-nav-distance").textContent = d > 1000 ? (d/1000).toFixed(1) + " km" : Math.round(d) + " m";
-    document.getElementById("hud-nav-eta").textContent = mins + " min";
+    updateHUD(d, mins);
     hud.textContent = `Walk towards ${SHORT[navTarget.name] || navTarget.name}`;
   }
+}
+
+// ── Draw the multi-layer Apple Maps route ──
+function drawRouteLines(coords) {
+  // Layer 1: Wide glow shadow
+  routeLayers.push(
+    L.polyline(coords, { color: '#007aff', opacity: 0.12, weight: 18, lineCap: 'round', lineJoin: 'round', interactive: false }).addTo(map)
+  );
+  // Layer 2: White border (road-casing effect)
+  routeLayers.push(
+    L.polyline(coords, { color: '#ffffff', opacity: 0.95, weight: 10, lineCap: 'round', lineJoin: 'round', interactive: false }).addTo(map)
+  );
+  // Layer 3: Main blue route
+  routeLayers.push(
+    L.polyline(coords, { color: '#007aff', opacity: 0.9, weight: 7, lineCap: 'round', lineJoin: 'round', interactive: false }).addTo(map)
+  );
+  // Layer 4: Animated direction dashes
+  routeLayers.push(
+    L.polyline(coords, { color: '#4da6ff', opacity: 0.6, weight: 3, lineCap: 'round', dashArray: '2,12', className: 'route-arrow-anim', interactive: false }).addTo(map)
+  );
+}
+
+// ── Start/End markers ──
+function drawRouteMarkers(coords) {
+  // Start marker (green dot)
+  const startIcon = L.divIcon({
+    className: '',
+    html: `<div class="route-endpoint start"><i class="fa-solid fa-circle"></i></div>`,
+    iconSize: [20, 20], iconAnchor: [10, 10]
+  });
+  routeLayers.push(L.marker(coords[0], { icon: startIcon, interactive: false }).addTo(map));
+
+  // End marker (blue pin with label)
+  const endIcon = L.divIcon({
+    className: '',
+    html: `<div class="route-endpoint end"><i class="fa-solid fa-location-dot"></i><span class="route-end-label">${SHORT[navTarget.name] || navTarget.name}</span></div>`,
+    iconSize: [24, 24], iconAnchor: [12, 24]
+  });
+  routeLayers.push(L.marker(coords[coords.length - 1], { icon: endIcon, interactive: false }).addTo(map));
+}
+
+// ── Update HUD distance/time ──
+function updateHUD(distMeters, mins) {
+  document.getElementById("hud-nav-distance").textContent =
+    distMeters > 1000 ? (distMeters / 1000).toFixed(1) + " km" : Math.round(distMeters) + " m";
+  document.getElementById("hud-nav-eta").textContent = mins + " min";
 }
 
 function haversine(a, b) {
@@ -369,18 +417,21 @@ function haversine(a, b) {
   return R*2*Math.atan2(Math.sqrt(x), Math.sqrt(1-x));
 }
 
+// ── START / STOP NAVIGATION ──────────────────────────────────────────────────
+
 function startNav() {
   if (!selBldg) return;
-  navTarget = { ...selBldg }; // Save the target BEFORE closing the sheet
+  navTarget = { ...selBldg }; // Save target BEFORE closing sheet
   navActive = true;
   document.getElementById("nav-hud").classList.add("active");
   closeSheet();
-  fetchAndDrawRoute();
+  fetchAndDrawRoute(); // First route: no debounce, draw immediately
 }
 
 function stopNav() {
   navActive = false;
   navTarget = null;
+  if (routeDebounceTimer) { clearTimeout(routeDebounceTimer); routeDebounceTimer = null; }
   document.getElementById("nav-hud").classList.remove("active");
   clearRoute();
   map.flyTo(CAMPUS_CENTER, 17, { duration: 1.2, easeLinearity: 0.25 });
@@ -405,8 +456,8 @@ function toggleGps() {
     p => {
       userLoc = { lat: p.coords.latitude, lng: p.coords.longitude };
       updateUserMarker();
-      map.setView([userLoc.lat, userLoc.lng], 17);
-      if (navActive) fetchAndDrawRoute();
+      map.flyTo([userLoc.lat, userLoc.lng], 17, { duration: 1 });
+      if (navActive) requestRouteUpdate();
     },
     err => console.warn("Initial GPS:", err),
     { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
@@ -418,13 +469,17 @@ function toggleGps() {
       userLoc = { lat: p.coords.latitude, lng: p.coords.longitude };
       updateUserMarker();
       if (navActive) {
-        map.setView([userLoc.lat, userLoc.lng], 17);
-        fetchAndDrawRoute();
+        // Smooth follow without jarring setView
+        map.panTo([userLoc.lat, userLoc.lng], { animate: true, duration: 0.5 });
+        requestRouteUpdate(); // Debounced — won't flood OSRM
       }
     },
     err => {
-      alert("GPS access denied. Please enable Location in your phone Settings > Privacy > Location Services, and also allow it in your browser.");
-      btn.classList.remove("active"); btn.style.color = "";
+      console.warn("GPS error:", err.code, err.message);
+      if (err.code === 1) { // PERMISSION_DENIED
+        alert("GPS access denied. Please enable Location in your phone Settings > Privacy > Location Services, and also allow it in your browser.");
+        btn.classList.remove("active"); btn.style.color = "";
+      }
     },
     { enableHighAccuracy: true, timeout: 15000, maximumAge: 3000 }
   );
@@ -440,10 +495,33 @@ function handleSearch(q) {
   db.forEach(b => {
     if (b.name.toLowerCase().includes(lq) || b.desc.toLowerCase().includes(lq))
       matches.push({ title: b.name, sub: b.type, id: b.id, icon: b.icon });
+    // Also search departments and teachers
+    if (b.depts) {
+      b.depts.forEach(d => {
+        if (d.name && d.name.toLowerCase().includes(lq))
+          matches.push({ title: d.name, sub: `Dept in ${SHORT[b.name]||b.name}`, id: b.id, icon: "fa-building" });
+        if (d.teachers) {
+          d.teachers.forEach(t => {
+            if (t.toLowerCase().includes(lq))
+              matches.push({ title: t, sub: `Faculty at ${SHORT[b.name]||b.name}`, id: b.id, icon: "fa-user-tie" });
+          });
+        }
+      });
+    }
   });
-  if (matches.length) {
+
+  // Deduplicate by building id for same building matches
+  const seen = new Set();
+  const unique = matches.filter(m => {
+    const key = m.title + m.id;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  if (unique.length) {
     dd.classList.add("active");
-    matches.slice(0,6).forEach(m => {
+    unique.slice(0,8).forEach(m => {
       const el = document.createElement("div"); el.className = "sr-item";
       el.innerHTML = `<div class="sr-icon"><i class="fa-solid ${m.icon}"></i></div><div><span class="sr-title">${m.title}</span><br><span class="sr-sub">${m.sub}</span></div>`;
       el.onclick = () => { selectBuilding(m.id); dd.classList.remove("active"); document.getElementById("search-input").value=""; cb.style.display="none"; };
@@ -482,10 +560,12 @@ function initEvents() {
   // Add Building
   document.getElementById("nav-add-bldg").onclick = () => {
     isAddingBldg = true;
-    document.getElementById("add-bldg-modal").style.display = "flex";
+    document.getElementById("add-bldg-modal").style.display = "block";
     document.getElementById("new-bldg-name").value = "";
     document.getElementById("new-bldg-desc").value = "";
-    document.getElementById("new-bldg-coords").textContent = "Not set (Tap map)";
+    const coordsEl = document.getElementById("new-bldg-coords");
+    coordsEl.textContent = "📍 Not set — tap the map!";
+    coordsEl.classList.remove("has-coords");
     document.getElementById("btn-save-bldg").disabled = true;
     newBldgLoc = null; closeSheet();
   };

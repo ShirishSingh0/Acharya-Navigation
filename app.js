@@ -271,6 +271,7 @@ function selectBuilding(id) {
   document.getElementById("sheet-name").textContent = selBldg.name;
   document.getElementById("sheet-desc").textContent = selBldg.desc;
   document.getElementById("detail-sheet").classList.add("open");
+  renderTeachers();
   // Switch to map
   document.querySelectorAll(".nav-item").forEach(b => b.classList.remove("active"));
   document.querySelector("[data-target='screen-map']").classList.add("active");
@@ -689,6 +690,21 @@ function initEvents() {
   // Reset Map
   document.getElementById("btn-reset-map").onclick = resetMapToDefault;
 
+  // Teacher management
+  document.getElementById("btn-add-teacher-toggle").onclick = () => {
+    const form = document.getElementById("form-add-teacher");
+    form.style.display = form.style.display === "none" ? "block" : "none";
+    document.getElementById("input-teacher-name").value = "";
+    if (form.style.display === "block") document.getElementById("input-teacher-name").focus();
+  };
+  document.getElementById("btn-cancel-teacher").onclick = () => {
+    document.getElementById("form-add-teacher").style.display = "none";
+  };
+  document.getElementById("btn-save-teacher").onclick = addTeacher;
+  document.getElementById("input-teacher-name").addEventListener("keydown", e => {
+    if (e.key === "Enter") addTeacher();
+  });
+
   // Add Building
   document.getElementById("nav-add-bldg").onclick = () => {
     isAddingBldg = true;
@@ -767,6 +783,84 @@ function toggleDarkMode() {
   if (tileLayer && map) {
     map.removeLayer(tileLayer);
     tileLayer = L.tileLayer(isDark ? TILE_DARK : TILE_LIGHT, { maxZoom: 19 }).addTo(map);
+  }
+}
+
+// ── TEACHER MANAGEMENT ──────────────────────────────────────────────────────
+function renderTeachers() {
+  const list = document.getElementById("teacher-list");
+  const emptyMsg = document.getElementById("no-teachers-msg");
+  list.innerHTML = "";
+
+  if (!selBldg) return;
+
+  // Ensure teachers array exists
+  if (!selBldg.teachers) selBldg.teachers = [];
+
+  if (selBldg.teachers.length === 0) {
+    emptyMsg.style.display = "block";
+  } else {
+    emptyMsg.style.display = "none";
+    selBldg.teachers.forEach((name, idx) => {
+      const initials = name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
+      const row = document.createElement("div");
+      row.className = "teacher-row";
+      row.innerHTML = `
+        <div class="teacher-info">
+          <div class="teacher-avatar">${initials}</div>
+          <span class="teacher-name-text">${name}</span>
+        </div>
+        <button class="teacher-remove" data-idx="${idx}" title="Remove"><i class="fa-solid fa-xmark"></i></button>
+      `;
+      row.querySelector(".teacher-remove").onclick = () => removeTeacher(idx);
+      list.appendChild(row);
+    });
+  }
+
+  // Hide add form
+  document.getElementById("form-add-teacher").style.display = "none";
+}
+
+function addTeacher() {
+  if (!selBldg) return;
+  const input = document.getElementById("input-teacher-name");
+  const name = input.value.trim();
+  if (!name) return;
+
+  if (!selBldg.teachers) selBldg.teachers = [];
+  selBldg.teachers.push(name);
+  saveDB();
+  input.value = "";
+  renderTeachers();
+  // Keep form open for quick batch adding
+  document.getElementById("form-add-teacher").style.display = "block";
+  input.focus();
+}
+
+function removeTeacher(idx) {
+  if (!selBldg || !selBldg.teachers) return;
+  const name = selBldg.teachers[idx];
+  selBldg.teachers.splice(idx, 1);
+  saveDB();
+  renderTeachers();
+  // Show undo toast
+  showUndoToast(`Removed ${name}`);
+  // Override undo to re-add the teacher
+  const undoBtn = document.getElementById("btn-undo-road");
+  if (undoBtn) {
+    undoBtn.style.display = "";
+    const origClick = undoBtn.onclick;
+    undoBtn.onclick = () => {
+      if (selBldg) {
+        if (!selBldg.teachers) selBldg.teachers = [];
+        selBldg.teachers.splice(idx, 0, name);
+        saveDB();
+        renderTeachers();
+      }
+      const toast = document.getElementById("undo-toast");
+      if (toast) { toast.classList.remove("show"); setTimeout(() => toast.remove(), 300); }
+      if (undoTimer) clearTimeout(undoTimer);
+    };
   }
 }
 

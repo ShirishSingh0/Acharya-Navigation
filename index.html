@@ -21,7 +21,7 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.css" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
   
-  <link rel="stylesheet" href="styles.css?v=18">
+  <link rel="stylesheet" href="styles.css?v=19">
 </head>
 <body>
 
@@ -138,21 +138,17 @@
         
         <div class="directory-section">
           <div class="directory-header">
-            <h3>Directory</h3>
-            <button id="btn-add-dept-toggle" class="add-text-btn">+ Add Dept</button>
+            <h3><i class="fa-solid fa-chalkboard-user"></i> Faculty</h3>
+            <button id="btn-add-teacher-toggle" class="add-text-btn">+ Add</button>
           </div>
           
-          <div id="form-add-dept" class="inline-form" style="display:none;">
-            <input type="text" id="input-dept-name" class="form-input" placeholder="Department name…">
-            <div class="form-btns"><button id="btn-cancel-dept" class="fbtn cancel">Cancel</button><button id="btn-save-dept" class="fbtn save">Add</button></div>
-          </div>
           <div id="form-add-teacher" class="inline-form" style="display:none;">
-            <input type="hidden" id="input-teacher-dept-id">
-            <input type="text" id="input-teacher-name" class="form-input" placeholder="Faculty name…">
+            <input type="text" id="input-teacher-name" class="form-input" placeholder="Teacher name…">
             <div class="form-btns"><button id="btn-cancel-teacher" class="fbtn cancel">Cancel</button><button id="btn-save-teacher" class="fbtn save">Add</button></div>
           </div>
           
-          <div id="directory-list"></div>
+          <div id="teacher-list"></div>
+          <p id="no-teachers-msg" class="empty-msg" style="display:none;">No teachers added yet.</p>
         </div>
       </div>
     </div>
@@ -210,6 +206,6 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
   <script src="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
-  <script src="app.js?v=18"></script>
+  <script src="app.js?v=19"></script>
 </body>
 </html>

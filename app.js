@@ -352,17 +352,33 @@ async function fetchAndDrawRoute() {
   // ── TRY CUSTOM ROADS FIRST (Dijkstra) ──
   const campusRoute = tryCustomRoadRoute(userLoc, { lat: toLat, lng: toLng });
   if (campusRoute && thisRequestId === routeRequestId) {
-    const coords = campusRoute.path;
     const distMeters = campusRoute.distance;
-    const mins = Math.max(1, Math.round(distMeters / 80)); // ~80m/min walking
+    const mins = Math.max(1, Math.round(distMeters / 80));
 
-    drawRouteLines(coords);
-    drawRouteMarkers(coords);
-    map.fitBounds(L.latLngBounds(coords), { padding: [80, 100], maxZoom: 18 });
+    // Draw dotted "walk to road" segment (user → nearest road point)
+    if (campusRoute.walkToRoadDist > 5) {
+      drawDottedSegment(campusRoute.walkToRoad);
+    }
+
+    // Draw solid route along road network
+    drawRouteLines(campusRoute.roadPath);
+
+    // Draw dotted "walk to destination" segment (road → building)
+    if (campusRoute.walkToDestDist > 5) {
+      drawDottedSegment(campusRoute.walkToDest);
+    }
+
+    // Draw start/end markers using the full path
+    const fullPath = [...campusRoute.walkToRoad, ...campusRoute.roadPath, ...campusRoute.walkToDest];
+    drawRouteMarkers(fullPath);
+
+    map.fitBounds(L.latLngBounds(fullPath), { padding: [80, 100], maxZoom: 18 });
     updateHUD(distMeters, mins);
 
     if (distMeters < 25) {
       hud.textContent = "🎉 You've arrived at " + (SHORT[navTarget.name] || navTarget.name);
+    } else if (campusRoute.walkToRoadDist > 20) {
+      hud.textContent = `Walk ${Math.round(campusRoute.walkToRoadDist)}m to the nearest road`;
     } else {
       hud.textContent = `Walk to ${SHORT[navTarget.name] || navTarget.name} via campus roads`;
     }
@@ -462,6 +478,26 @@ function drawRouteLines(coords) {
   routeLayers.push(
     L.polyline(coords, { color: '#4da6ff', opacity: 0.6, weight: 3, lineCap: 'round', dashArray: '2,12', className: 'route-arrow-anim', interactive: false }).addTo(map)
   );
+}
+
+// ── Dotted line for off-road walking segments ──
+function drawDottedSegment(points) {
+  // Faint shadow
+  routeLayers.push(
+    L.polyline(points, { color: '#8e8e93', opacity: 0.15, weight: 12, lineCap: 'round', interactive: false }).addTo(map)
+  );
+  // Dotted line
+  routeLayers.push(
+    L.polyline(points, { color: '#8e8e93', opacity: 0.7, weight: 4, lineCap: 'round', dashArray: '6,10', interactive: false }).addTo(map)
+  );
+  // Small circle at road junction point
+  const roadPt = points[1]; // the point on the road
+  const junctionIcon = L.divIcon({
+    className: '',
+    html: '<div style="width:10px;height:10px;border-radius:50%;background:#8e8e93;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3);"></div>',
+    iconSize: [10, 10], iconAnchor: [5, 5]
+  });
+  routeLayers.push(L.marker(roadPt, { icon: junctionIcon, interactive: false }).addTo(map));
 }
 
 // ── Start/End markers ──
@@ -995,12 +1031,16 @@ function tryCustomRoadRoute(fromLoc, toLoc) {
   const result = dijkstra(adj, startKey, endKey);
   if (!result) return null;
 
-  // Add walking segments from actual location to nearest road point
-  const fullPath = [];
-  fullPath.push([fromLoc.lat || fromLoc[0], fromLoc.lng || fromLoc[1]]);
-  fullPath.push(...result.path);
-  fullPath.push([toLoc.lat || toLoc[0], toLoc.lng || toLoc[1]]);
-
+  const userPt = [fromLoc.lat || fromLoc[0], fromLoc.lng || fromLoc[1]];
+  const destPt = [toLoc.lat || toLoc[0], toLoc.lng || toLoc[1]];
   const totalDist = nearFrom.dist + result.distance + nearTo.dist;
-  return { path: fullPath, distance: totalDist };
+
+  return {
+    walkToRoad: [userPt, nearFrom.point],       // dotted: user → nearest road point
+    roadPath: result.path,                       // solid: along the road network
+    walkToDest: [nearTo.point, destPt],          // dotted: last road point → destination
+    walkToRoadDist: nearFrom.dist,
+    walkToDestDist: nearTo.dist,
+    distance: totalDist
+  };
 }

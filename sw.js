@@ -1,4 +1,4 @@
-const CACHE_NAME = 'acharya-nav-v16';
+const CACHE_NAME = 'acharya-nav-v17';
 const ASSETS = [
   './',
   './index.html',

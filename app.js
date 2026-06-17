@@ -30,7 +30,7 @@ const CAMPUS_CENTER = [13.084, 77.4838];
 
 // ── INIT ─────────────────────────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", () => {
-  initDB(); loadCustomRoads(); initDarkMode(); initMap(); initEvents(); updateUserMarker(); renderIndex(); renderCustomRoads();
+  initDB(); initDarkMode(); seedDefaultRoads(); loadCustomRoads(); initMap(); initEvents(); updateUserMarker(); renderIndex(); renderCustomRoads();
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').catch(e => console.log('SW:', e));
   }
@@ -44,7 +44,15 @@ function saveCustomRoads() { localStorage.setItem("acnav_roads", JSON.stringify(
 
 function initDarkMode() {
   isDark = localStorage.getItem("acnav_dark") === "true";
-  if (isDark) document.documentElement.setAttribute("data-theme", "dark");
+  if (isDark) {
+    document.documentElement.setAttribute("data-theme", "dark");
+    document.querySelector('meta[name="theme-color"]').content = "#1c1c1e";
+  }
+  // Set correct icon after DOM is ready
+  setTimeout(() => {
+    const btn = document.getElementById("btn-dark-mode");
+    if (btn) btn.innerHTML = isDark ? `<i class="fa-solid fa-sun"></i>` : `<i class="fa-solid fa-moon"></i>`;
+  }, 0);
 }
 
 function initDB() {
@@ -82,6 +90,10 @@ const SHORT = {
 };
 
 // ── MAP ──────────────────────────────────────────────────────────────────────
+let tileLayer = null;
+const TILE_LIGHT = "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
+const TILE_DARK = "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
+
 function initMap() {
   map = L.map("map", {
     zoomControl: false, attributionControl: false,
@@ -91,10 +103,11 @@ function initMap() {
 
   L.control.zoom({ position: "bottomright" }).addTo(map);
 
-  // Clean Apple-like tiles (CartoDB Voyager — free, no API key)
-  L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
-    maxZoom: 19
-  }).addTo(map);
+  // Set tile layer based on dark mode
+  tileLayer = L.tileLayer(isDark ? TILE_DARK : TILE_LIGHT, { maxZoom: 19 }).addTo(map);
+
+  // 3D perspective tilt on the map container
+  applyMapPerspective();
 
   drawCampus();
   renderMarkers();
@@ -121,28 +134,44 @@ function initMap() {
   });
 }
 
-// ── CAMPUS OVERLAY ───────────────────────────────────────────────────────────
-const campusRoads = [
-  [[13.087,77.483],[13.0856,77.4835],[13.0844,77.4836],[13.0838,77.4838],[13.0828,77.4838],[13.0823,77.4842],[13.0815,77.4845]],
-  [[13.0856,77.4835],[13.0855,77.4842],[13.0848,77.484]],
-  [[13.0844,77.4836],[13.0843,77.4828]],
-  [[13.0838,77.4838],[13.0837,77.4845]],
-  [[13.0828,77.4838],[13.0832,77.4848]],
-  [[13.0828,77.4838],[13.0825,77.4828]],
-  [[13.0823,77.4842],[13.0825,77.4828]]
+function applyMapPerspective() {
+  const mapEl = document.getElementById("map");
+  mapEl.style.perspective = "1200px";
+  mapEl.style.perspectiveOrigin = "50% 30%";
+  // The tile pane gets a subtle 3D tilt
+  setTimeout(() => {
+    const pane = map.getPane("tilePane");
+    if (pane) {
+      pane.style.transform = pane.style.transform + " rotateX(2deg)";
+      pane.style.transformOrigin = "center bottom";
+    }
+  }, 300);
+}
+
+// ── DEFAULT CAMPUS ROADS (seeded into customRoads on first use) ─────────────
+const DEFAULT_ROADS = [
+  { id:"main_road_1", points:[[13.087,77.483],[13.0856,77.4835],[13.0844,77.4836],[13.0838,77.4838],[13.0828,77.4838],[13.0823,77.4842],[13.0815,77.4845]] },
+  { id:"main_road_2", points:[[13.0856,77.4835],[13.0855,77.4842],[13.0848,77.484]] },
+  { id:"main_road_3", points:[[13.0844,77.4836],[13.0843,77.4828]] },
+  { id:"main_road_4", points:[[13.0838,77.4838],[13.0837,77.4845]] },
+  { id:"main_road_5", points:[[13.0828,77.4838],[13.0832,77.4848]] },
+  { id:"main_road_6", points:[[13.0828,77.4838],[13.0825,77.4828]] },
+  { id:"main_road_7", points:[[13.0823,77.4842],[13.0825,77.4828]] }
 ];
+
+function seedDefaultRoads() {
+  // Only seed if no roads exist at all (first time user)
+  if (!localStorage.getItem("acnav_roads")) {
+    customRoads = [...DEFAULT_ROADS];
+    saveCustomRoads();
+  }
+}
 
 function drawCampus() {
   // Campus boundary
   L.polygon([[13.0875,77.48],[13.0875,77.487],[13.0805,77.487],[13.0805,77.48]], {
     color:'#007aff', weight:2, opacity:.15, fillColor:'#007aff', fillOpacity:.02, dashArray:'6,4', interactive:false
   }).addTo(map);
-
-  // Campus roads
-  campusRoads.forEach(r => {
-    L.polyline(r, {color:'#d1d1d6',weight:14,opacity:.8,lineCap:'round',lineJoin:'round',interactive:false}).addTo(map);
-    L.polyline(r, {color:'#ffffff',weight:9,opacity:1,lineCap:'round',lineJoin:'round',interactive:false}).addTo(map);
-  });
 
   // Green patches
   [[[13.0824,77.484],[13.0824,77.485],[13.0816,77.485],[13.0816,77.484]],
@@ -691,8 +720,13 @@ function toggleDarkMode() {
   localStorage.setItem("acnav_dark", isDark);
   const btn = document.getElementById("btn-dark-mode");
   btn.innerHTML = isDark ? `<i class="fa-solid fa-sun"></i>` : `<i class="fa-solid fa-moon"></i>`;
-  // Update theme-color meta tag
   document.querySelector('meta[name="theme-color"]').content = isDark ? "#1c1c1e" : "#ffffff";
+
+  // Swap actual map tiles
+  if (tileLayer && map) {
+    map.removeLayer(tileLayer);
+    tileLayer = L.tileLayer(isDark ? TILE_DARK : TILE_LIGHT, { maxZoom: 19 }).addTo(map);
+  }
 }
 
 // ── CUSTOM ROAD DRAWING ─────────────────────────────────────────────────────

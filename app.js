@@ -686,6 +686,9 @@ function initEvents() {
   document.getElementById("btn-delete-road-mode").onclick = toggleDeleteRoadMode;
   document.getElementById("btn-exit-road-delete").onclick = () => exitDeleteRoadMode();
 
+  // Reset Map
+  document.getElementById("btn-reset-map").onclick = resetMapToDefault;
+
   // Add Building
   document.getElementById("nav-add-bldg").onclick = () => {
     isAddingBldg = true;
@@ -765,6 +768,47 @@ function toggleDarkMode() {
     map.removeLayer(tileLayer);
     tileLayer = L.tileLayer(isDark ? TILE_DARK : TILE_LIGHT, { maxZoom: 19 }).addTo(map);
   }
+}
+
+// ── RESET TO DEFAULT ─────────────────────────────────────────────────────────
+function resetMapToDefault() {
+  if (!confirm("Reset everything to default?\n\nThis will restore all original buildings and roads, and remove any custom changes you've made.")) return;
+
+  // Clear all custom data
+  localStorage.removeItem("acnav_v4");
+  localStorage.removeItem("acnav_roads");
+  localStorage.removeItem("acnav_roads_cleared");
+
+  // Re-init buildings from scratch
+  db = [
+    { id:"gate", name:"Main Entrance Gateway", type:"gate", lat:13.0860, lng:77.4830, icon:"fa-door-open", desc:"The grand main entrance to Acharya Institutes campus.", depts:[] },
+    { id:"admin", name:"Central Administrative Block", type:"facility", lat:13.0855, lng:77.4842, icon:"fa-building-columns", desc:"Administrative offices and registrar.", depts:[] },
+    { id:"asd", name:"Acharya School of Design", type:"academic", lat:13.0852, lng:77.4832, icon:"fa-palette", desc:"Design school offering Communication, Fashion, and Product Design.", depts:[] },
+    { id:"aigs", name:"Acharya Institute of Graduate Studies", type:"academic", lat:13.0848, lng:77.4840, icon:"fa-graduation-cap", desc:"Science, Arts, Commerce, and Management programmes.", depts:[] },
+    { id:"ait", name:"Acharya Institute of Technology", type:"academic", lat:13.0841, lng:77.4837, icon:"fa-laptop-code", desc:"Flagship engineering institution — CSE, ISE, ECE, Mech, Civil.", depts:[] },
+    { id:"canteen", name:"Central Food Court", type:"facility", lat:13.0843, lng:77.4828, icon:"fa-utensils", desc:"Campus dining hub with multiple cuisine counters.", depts:[] },
+    { id:"library", name:"Learning Resource Centre", type:"facility", lat:13.0837, lng:77.4845, icon:"fa-book-open", desc:"Three-storey knowledge hub with 1,00,000+ volumes.", depts:[] },
+    { id:"pharmacy", name:"College of Pharmacy", type:"academic", lat:13.0832, lng:77.4848, icon:"fa-file-prescription", desc:"PCI-approved pharmacy programmes.", depts:[] },
+    { id:"stadium", name:"Acharya Stadium", type:"sports", lat:13.0825, lng:77.4828, icon:"fa-futbol", desc:"10,000+ seating capacity, FIFA-standard turf.", depts:[] },
+    { id:"lake", name:"Acharya Eco Lake", type:"nature", lat:13.0820, lng:77.4845, icon:"fa-water", desc:"4-acre artificial lake and eco-preserve.", depts:[] }
+  ];
+  saveDB();
+
+  // Re-init roads from defaults
+  customRoads = [...DEFAULT_ROADS];
+  saveCustomRoads();
+
+  // Re-render everything
+  renderMarkers();
+  renderCustomRoads();
+  renderIndex();
+  closeSheet();
+
+  // Show confirmation toast
+  showUndoToast("Map reset to default");
+  // Override the undo button to do nothing (can't undo a full reset)
+  const undoBtn = document.getElementById("btn-undo-road");
+  if (undoBtn) undoBtn.style.display = "none";
 }
 
 // ── CUSTOM ROAD DRAWING ─────────────────────────────────────────────────────

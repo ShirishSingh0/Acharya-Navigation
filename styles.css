@@ -38,6 +38,41 @@
   --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
 
+/* ── DARK MODE ── */
+[data-theme="dark"] {
+  --bg: #1c1c1e;
+  --bg2: #2c2c2e;
+  --bg-card: rgba(44,44,46,0.92);
+  --bg-glass: rgba(44,44,46,0.8);
+  --bg-input: rgba(120,120,128,0.2);
+
+  --text: #ffffff;
+  --text2: #ebebf5;
+  --text3: #8e8e93;
+
+  --border: rgba(255,255,255,0.1);
+  --shadow: 0 10px 30px -8px rgba(0,0,0,0.5);
+  --shadow-sm: 0 4px 12px rgba(0,0,0,0.3);
+}
+[data-theme="dark"] .bottom-nav { background: #1c1c1e; border-color: rgba(255,255,255,0.08); }
+[data-theme="dark"] .search-box { background: var(--bg-card); }
+[data-theme="dark"] .search-box:focus-within { background: var(--bg2); }
+[data-theme="dark"] .chip { background: var(--bg-card); color: var(--text2); }
+[data-theme="dark"] .chip.active { background: var(--accent); color: white; }
+[data-theme="dark"] .form-input { background: var(--bg2); color: var(--text); border-color: var(--border); }
+[data-theme="dark"] .form-input::placeholder { color: var(--text3); }
+[data-theme="dark"] .dept-card { background: var(--bg2); }
+[data-theme="dark"] .dept-head { background: var(--bg); }
+[data-theme="dark"] .dept-btn { background: var(--bg); border-color: var(--border); color: var(--text3); }
+[data-theme="dark"] .modal-content, [data-theme="dark"] .add-bldg-card { background: var(--bg2); }
+[data-theme="dark"] .road-toolbar-inner { background: var(--bg2); }
+[data-theme="dark"] #screen-index { background: var(--bg); }
+[data-theme="dark"] .index-header { background: rgba(28,28,30,0.9); }
+[data-theme="dark"] .marker-label { color: var(--text); text-shadow: 0 0 4px rgba(0,0,0,0.8), 0 0 6px rgba(0,0,0,0.8); }
+/* Dark map tiles filter */
+[data-theme="dark"] .leaflet-tile-pane { filter: brightness(0.7) contrast(1.2) saturate(0.8); }
+[data-theme="dark"] .leaflet-control-zoom a { background: var(--bg-card) !important; color: var(--text) !important; }
+
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
 html,body{
   font-family:'Inter',system-ui,sans-serif;
@@ -334,3 +369,38 @@ html,body{
   box-shadow: 0 2px 8px rgba(0,122,255,0.3);
   font-family: 'Inter', sans-serif; letter-spacing: -0.01em;
 }
+
+/* ==================== ROAD DRAWING ==================== */
+
+/* Toolbar */
+.road-toolbar {
+  position: fixed; top: calc(16px + var(--safe-top)); left: 12px; right: 12px; max-width: 420px; margin: 0 auto;
+  z-index: 150;
+  animation: card-slide-up 0.3s cubic-bezier(0.32, 0.72, 0, 1) forwards;
+}
+.road-toolbar-inner {
+  display: flex; align-items: center; gap: 10px;
+  background: white; border-radius: 16px; padding: 10px 16px;
+  box-shadow: var(--shadow); border: 1px solid var(--border);
+}
+.road-toolbar-inner > i { color: var(--accent); font-size: 1.1rem; }
+.road-toolbar-inner > span { flex: 1; font-size: 0.85rem; font-weight: 600; color: var(--text2); }
+.road-toolbar-btns { display: flex; gap: 6px; }
+.road-delete-bar .road-toolbar-inner > i { color: var(--rose); }
+.road-delete-bar .road-toolbar-inner > span { color: var(--rose); }
+
+/* Custom road lines on map */
+.custom-road-line { cursor: pointer; }
+.custom-road-line:hover { stroke-opacity: 1 !important; }
+.custom-road-highlight { stroke: var(--rose) !important; stroke-opacity: 0.8 !important; }
+
+/* Waypoint dot while drawing */
+.road-waypoint {
+  width: 12px; height: 12px; border-radius: 50%;
+  background: var(--accent); border: 2px solid white;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+}
+
+/* Drawing cursor hint */
+.draw-mode-cursor { cursor: crosshair !important; }
+.draw-mode-cursor .leaflet-container { cursor: crosshair !important; }

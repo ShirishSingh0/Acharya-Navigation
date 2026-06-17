@@ -11,18 +11,41 @@ let isAddingBldg = false, newBldgLoc = null;
 let isLocked = true;
 
 // Routing state
-let routeRequestId = 0;       // Incremented per request, prevents stale responses
-let routeDebounceTimer = null; // Prevents GPS flooding OSRM
+let routeRequestId = 0;
+let routeDebounceTimer = null;
+
+// Custom roads state
+let customRoads = [];
+let customRoadLayers = {};
+let isDrawingRoad = false;
+let isDeletingRoad = false;
+let drawPoints = [];
+let drawPreviewLine = null;
+let drawWaypointMarkers = [];
+
+// Dark mode
+let isDark = false;
 
 const CAMPUS_CENTER = [13.084, 77.4838];
 
 // ── INIT ─────────────────────────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", () => {
-  initDB(); initMap(); initEvents(); updateUserMarker(); renderIndex();
+  initDB(); loadCustomRoads(); initDarkMode(); initMap(); initEvents(); updateUserMarker(); renderIndex(); renderCustomRoads();
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').catch(e => console.log('SW:', e));
   }
 });
+
+function loadCustomRoads() {
+  const d = localStorage.getItem("acnav_roads");
+  if (d) customRoads = JSON.parse(d);
+}
+function saveCustomRoads() { localStorage.setItem("acnav_roads", JSON.stringify(customRoads)); }
+
+function initDarkMode() {
+  isDark = localStorage.getItem("acnav_dark") === "true";
+  if (isDark) document.documentElement.setAttribute("data-theme", "dark");
+}
 
 function initDB() {
   const d = localStorage.getItem("acnav_v4");
@@ -78,6 +101,11 @@ function initMap() {
 
   // Map click handler
   map.on("click", (e) => {
+    // Road drawing mode
+    if (isDrawingRoad) {
+      addDrawPoint(e.latlng.lat, e.latlng.lng);
+      return;
+    }
     if (isAddingBldg) {
       newBldgLoc = { lat: +e.latlng.lat.toFixed(6), lng: +e.latlng.lng.toFixed(6) };
       const coordsEl = document.getElementById("new-bldg-coords");
@@ -281,7 +309,7 @@ function fetchWithTimeout(url, timeoutMs = 8000) {
 async function fetchAndDrawRoute() {
   if (!navTarget) return;
 
-  const thisRequestId = ++routeRequestId; // Unique ID for this request
+  const thisRequestId = ++routeRequestId;
   const hud = document.getElementById("hud-nav-instruction");
   hud.textContent = "Calculating route…";
 
@@ -290,6 +318,27 @@ async function fetchAndDrawRoute() {
   const fromLng = userLoc.lng, fromLat = userLoc.lat;
   const toLng = navTarget.lng, toLat = navTarget.lat;
 
+  // ── TRY CUSTOM ROADS FIRST (Dijkstra) ──
+  const campusRoute = tryCustomRoadRoute(userLoc, { lat: toLat, lng: toLng });
+  if (campusRoute && thisRequestId === routeRequestId) {
+    const coords = campusRoute.path;
+    const distMeters = campusRoute.distance;
+    const mins = Math.max(1, Math.round(distMeters / 80)); // ~80m/min walking
+
+    drawRouteLines(coords);
+    drawRouteMarkers(coords);
+    map.fitBounds(L.latLngBounds(coords), { padding: [80, 100], maxZoom: 18 });
+    updateHUD(distMeters, mins);
+
+    if (distMeters < 25) {
+      hud.textContent = "🎉 You've arrived at " + (SHORT[navTarget.name] || navTarget.name);
+    } else {
+      hud.textContent = `Walk to ${SHORT[navTarget.name] || navTarget.name} via campus roads`;
+    }
+    return;
+  }
+
+  // ── FALL BACK TO OSRM ──
   // Try OSRM profiles in order: foot → driving → straight line fallback
   const profiles = ["foot", "driving"];
   let routeData = null;
@@ -557,6 +606,19 @@ function initEvents() {
     document.getElementById("simulator-panel").classList.toggle("hidden", !simActive);
   };
 
+  // Dark Mode Toggle
+  document.getElementById("btn-dark-mode").onclick = toggleDarkMode;
+
+  // Road Drawing
+  document.getElementById("btn-draw-road").onclick = startDrawingRoad;
+  document.getElementById("btn-road-cancel").onclick = cancelDrawingRoad;
+  document.getElementById("btn-road-done").onclick = saveDrawnRoad;
+  document.getElementById("btn-road-undo").onclick = undoDrawPoint;
+
+  // Road Deleting
+  document.getElementById("btn-delete-road-mode").onclick = toggleDeleteRoadMode;
+  document.getElementById("btn-exit-road-delete").onclick = () => exitDeleteRoadMode();
+
   // Add Building
   document.getElementById("nav-add-bldg").onclick = () => {
     isAddingBldg = true;
@@ -620,4 +682,249 @@ function initEvents() {
       });
     };
   }
+}
+
+// ── DARK MODE ────────────────────────────────────────────────────────────────
+function toggleDarkMode() {
+  isDark = !isDark;
+  document.documentElement.setAttribute("data-theme", isDark ? "dark" : "");
+  localStorage.setItem("acnav_dark", isDark);
+  const btn = document.getElementById("btn-dark-mode");
+  btn.innerHTML = isDark ? `<i class="fa-solid fa-sun"></i>` : `<i class="fa-solid fa-moon"></i>`;
+  // Update theme-color meta tag
+  document.querySelector('meta[name="theme-color"]').content = isDark ? "#1c1c1e" : "#ffffff";
+}
+
+// ── CUSTOM ROAD DRAWING ─────────────────────────────────────────────────────
+
+function renderCustomRoads() {
+  // Clear existing road layers
+  Object.values(customRoadLayers).forEach(layers => {
+    layers.forEach(l => { try { map.removeLayer(l); } catch(e){} });
+  });
+  customRoadLayers = {};
+
+  customRoads.forEach(road => {
+    const layers = [];
+    // Border (wider white)
+    layers.push(L.polyline(road.points, {
+      color: '#aaaaaa', weight: 12, opacity: 0.6, lineCap: 'round', lineJoin: 'round', interactive: isDeletingRoad
+    }).addTo(map));
+    // Fill (orange for custom roads)
+    const mainLine = L.polyline(road.points, {
+      color: '#ff9500', weight: 6, opacity: 0.85, lineCap: 'round', lineJoin: 'round', interactive: isDeletingRoad,
+      className: isDeletingRoad ? 'custom-road-line' : ''
+    }).addTo(map);
+    layers.push(mainLine);
+
+    if (isDeletingRoad) {
+      mainLine.on('click', () => deleteCustomRoad(road.id));
+      layers[0].on('click', () => deleteCustomRoad(road.id));
+    }
+
+    customRoadLayers[road.id] = layers;
+  });
+}
+
+function startDrawingRoad() {
+  if (isDrawingRoad) return;
+  isDrawingRoad = true;
+  drawPoints = [];
+  drawWaypointMarkers = [];
+  drawPreviewLine = null;
+  closeSheet();
+
+  document.getElementById("road-draw-toolbar").style.display = "block";
+  document.getElementById("btn-draw-road").classList.add("active");
+  document.getElementById("road-point-count").textContent = "0 points";
+  document.getElementById("btn-road-done").disabled = true;
+  document.getElementById("map").style.cursor = "crosshair";
+}
+
+function addDrawPoint(lat, lng) {
+  const pt = [+lat.toFixed(6), +lng.toFixed(6)];
+  drawPoints.push(pt);
+
+  // Add a waypoint dot marker
+  const dotIcon = L.divIcon({ className: '', html: '<div class="road-waypoint"></div>', iconSize: [12, 12], iconAnchor: [6, 6] });
+  const dotMarker = L.marker(pt, { icon: dotIcon, interactive: false }).addTo(map);
+  drawWaypointMarkers.push(dotMarker);
+
+  // Update or create preview line
+  if (drawPreviewLine) {
+    drawPreviewLine.setLatLngs(drawPoints);
+  } else {
+    drawPreviewLine = L.polyline(drawPoints, {
+      color: '#ff9500', weight: 5, opacity: 0.7, dashArray: '8,6', lineCap: 'round', lineJoin: 'round'
+    }).addTo(map);
+  }
+
+  // Update UI
+  document.getElementById("road-point-count").textContent = drawPoints.length + (drawPoints.length === 1 ? " point" : " points");
+  document.getElementById("btn-road-done").disabled = drawPoints.length < 2;
+}
+
+function undoDrawPoint() {
+  if (!drawPoints.length) return;
+  drawPoints.pop();
+  const lastDot = drawWaypointMarkers.pop();
+  if (lastDot) map.removeLayer(lastDot);
+  if (drawPreviewLine) drawPreviewLine.setLatLngs(drawPoints);
+  document.getElementById("road-point-count").textContent = drawPoints.length + (drawPoints.length === 1 ? " point" : " points");
+  document.getElementById("btn-road-done").disabled = drawPoints.length < 2;
+}
+
+function cancelDrawingRoad() {
+  // Clean up preview
+  if (drawPreviewLine) { map.removeLayer(drawPreviewLine); drawPreviewLine = null; }
+  drawWaypointMarkers.forEach(m => map.removeLayer(m));
+  drawWaypointMarkers = [];
+  drawPoints = [];
+  isDrawingRoad = false;
+  document.getElementById("road-draw-toolbar").style.display = "none";
+  document.getElementById("btn-draw-road").classList.remove("active");
+  document.getElementById("map").style.cursor = "";
+}
+
+function saveDrawnRoad() {
+  if (drawPoints.length < 2) return;
+  const road = { id: "road_" + Date.now(), points: [...drawPoints] };
+  customRoads.push(road);
+  saveCustomRoads();
+
+  // Clean up preview
+  if (drawPreviewLine) { map.removeLayer(drawPreviewLine); drawPreviewLine = null; }
+  drawWaypointMarkers.forEach(m => map.removeLayer(m));
+  drawWaypointMarkers = [];
+  drawPoints = [];
+  isDrawingRoad = false;
+  document.getElementById("road-draw-toolbar").style.display = "none";
+  document.getElementById("btn-draw-road").classList.remove("active");
+  document.getElementById("map").style.cursor = "";
+
+  renderCustomRoads();
+}
+
+function toggleDeleteRoadMode() {
+  if (isDeletingRoad) {
+    exitDeleteRoadMode();
+  } else {
+    isDeletingRoad = true;
+    document.getElementById("road-delete-toolbar").style.display = "block";
+    document.getElementById("btn-delete-road-mode").classList.add("active");
+    renderCustomRoads(); // Re-render with click handlers
+  }
+}
+
+function exitDeleteRoadMode() {
+  isDeletingRoad = false;
+  document.getElementById("road-delete-toolbar").style.display = "none";
+  document.getElementById("btn-delete-road-mode").classList.remove("active");
+  renderCustomRoads(); // Re-render without click handlers
+}
+
+function deleteCustomRoad(id) {
+  const road = customRoads.find(r => r.id === id);
+  if (!road) return;
+  if (!confirm("Delete this road?")) return;
+
+  customRoads = customRoads.filter(r => r.id !== id);
+  saveCustomRoads();
+  renderCustomRoads();
+}
+
+// ── DIJKSTRA ROUTING ON CUSTOM ROADS ─────────────────────────────────────────
+
+function findNearestPointOnRoads(loc) {
+  let minDist = Infinity, nearest = null;
+  customRoads.forEach(road => {
+    road.points.forEach(pt => {
+      const d = haversine({ lat: loc.lat || loc[0], lng: loc.lng || loc[1] }, { lat: pt[0], lng: pt[1] });
+      if (d < minDist) { minDist = d; nearest = pt; }
+    });
+  });
+  return { point: nearest, dist: minDist };
+}
+
+function buildRoadGraph() {
+  // Build adjacency list from all custom roads
+  const adj = new Map(); // key: "lat,lng" → [{node, weight}]
+  const key = (pt) => pt[0] + "," + pt[1];
+
+  customRoads.forEach(road => {
+    for (let i = 0; i < road.points.length - 1; i++) {
+      const a = road.points[i], b = road.points[i + 1];
+      const ka = key(a), kb = key(b);
+      const w = haversine({ lat: a[0], lng: a[1] }, { lat: b[0], lng: b[1] });
+      if (!adj.has(ka)) adj.set(ka, []);
+      if (!adj.has(kb)) adj.set(kb, []);
+      adj.get(ka).push({ node: kb, weight: w, pt: b });
+      adj.get(kb).push({ node: ka, weight: w, pt: a });
+    }
+  });
+  return { adj, key };
+}
+
+function dijkstra(adj, startKey, endKey) {
+  const dist = new Map(), prev = new Map(), visited = new Set();
+  const pq = [{ node: startKey, d: 0 }];
+  dist.set(startKey, 0);
+
+  while (pq.length) {
+    pq.sort((a, b) => a.d - b.d);
+    const { node: u, d } = pq.shift();
+    if (visited.has(u)) continue;
+    visited.add(u);
+    if (u === endKey) break;
+
+    const neighbors = adj.get(u) || [];
+    for (const { node: v, weight } of neighbors) {
+      const alt = d + weight;
+      if (alt < (dist.get(v) ?? Infinity)) {
+        dist.set(v, alt);
+        prev.set(v, u);
+        pq.push({ node: v, d: alt });
+      }
+    }
+  }
+
+  if (!dist.has(endKey)) return null;
+
+  // Reconstruct path
+  const path = [];
+  let cur = endKey;
+  while (cur) {
+    const parts = cur.split(",");
+    path.unshift([+parts[0], +parts[1]]);
+    cur = prev.get(cur);
+  }
+  return { path, distance: dist.get(endKey) };
+}
+
+function tryCustomRoadRoute(fromLoc, toLoc) {
+  if (customRoads.length === 0) return null;
+
+  const nearFrom = findNearestPointOnRoads(fromLoc);
+  const nearTo = findNearestPointOnRoads(toLoc);
+
+  // Only use custom roads if both endpoints are within 200m of a road
+  if (!nearFrom.point || !nearTo.point || nearFrom.dist > 200 || nearTo.dist > 200) return null;
+
+  const { adj, key } = buildRoadGraph();
+  const startKey = key(nearFrom.point);
+  const endKey = key(nearTo.point);
+
+  if (startKey === endKey) return null;
+
+  const result = dijkstra(adj, startKey, endKey);
+  if (!result) return null;
+
+  // Add walking segments from actual location to nearest road point
+  const fullPath = [];
+  fullPath.push([fromLoc.lat || fromLoc[0], fromLoc.lng || fromLoc[1]]);
+  fullPath.push(...result.path);
+  fullPath.push([toLoc.lat || toLoc[0], toLoc.lng || toLoc[1]]);
+
+  const totalDist = nearFrom.dist + result.distance + nearTo.dist;
+  return { path: fullPath, distance: totalDist };
 }

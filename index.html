@@ -21,7 +21,7 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.css" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
   
-  <link rel="stylesheet" href="styles.css?v=12">
+  <link rel="stylesheet" href="styles.css?v=13">
 </head>
 <body>
 
@@ -50,8 +50,9 @@
     <!-- MAP CONTAINER -->
     <div id="map"></div>
     
-    <!-- MAP ACTIONS (My Location, Add, Sim) -->
+    <!-- MAP ACTIONS (My Location, Dark Mode, Sim) -->
     <div class="map-actions-group">
+      <button id="btn-dark-mode" class="map-fab mini" title="Dark Mode"><i class="fa-solid fa-moon"></i></button>
       <button id="sim-toggle-btn" class="map-fab mini" title="GPS Simulator"><i class="fa-solid fa-satellite-dish"></i></button>
       <button id="my-location-btn" class="map-fab" title="My Location"><i class="fa-solid fa-location-arrow"></i></button>
     </div>
@@ -59,7 +60,30 @@
     <!-- DRAWING & EDITING ACTIONS -->
     <div class="edit-actions-group">
       <button id="btn-lock-map" class="map-fab mini"><i class="fa-solid fa-lock-open"></i></button>
-      <button id="btn-draw-road" class="map-fab mini"><i class="fa-solid fa-road"></i></button>
+      <button id="btn-draw-road" class="map-fab mini" title="Draw Road"><i class="fa-solid fa-pen"></i></button>
+      <button id="btn-delete-road-mode" class="map-fab mini" title="Delete Road"><i class="fa-solid fa-eraser"></i></button>
+    </div>
+
+    <!-- ROAD DRAWING TOOLBAR -->
+    <div id="road-draw-toolbar" class="road-toolbar" style="display:none;">
+      <div class="road-toolbar-inner">
+        <i class="fa-solid fa-pen-fancy"></i>
+        <span id="road-point-count">0 points</span>
+        <div class="road-toolbar-btns">
+          <button id="btn-road-undo" class="fbtn cancel"><i class="fa-solid fa-rotate-left"></i> Undo</button>
+          <button id="btn-road-cancel" class="fbtn cancel">Cancel</button>
+          <button id="btn-road-done" class="fbtn save" disabled>Save Road</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ROAD DELETE TOOLBAR -->
+    <div id="road-delete-toolbar" class="road-toolbar road-delete-bar" style="display:none;">
+      <div class="road-toolbar-inner">
+        <i class="fa-solid fa-eraser"></i>
+        <span>Tap a road to delete it</span>
+        <button id="btn-exit-road-delete" class="fbtn cancel">Done</button>
+      </div>
     </div>
 
     <!-- ADD BUILDING PANEL (floating bottom card — doesn't block map) -->
@@ -185,6 +209,6 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
   <script src="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
-  <script src="app.js?v=12"></script>
+  <script src="app.js?v=13"></script>
 </body>
 </html>

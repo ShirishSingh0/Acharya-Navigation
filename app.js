@@ -859,16 +859,54 @@ function exitDeleteRoadMode() {
   renderCustomRoads(); // Re-render without click handlers
 }
 
+let lastDeletedRoad = null;
+let undoTimer = null;
+
 function deleteCustomRoad(id) {
   const road = customRoads.find(r => r.id === id);
   if (!road) return;
-  if (!confirm("Delete this road?")) return;
 
+  // Remove the road
+  lastDeletedRoad = { ...road };
   customRoads = customRoads.filter(r => r.id !== id);
   saveCustomRoads();
-  // Mark that user has intentionally deleted roads so defaults don't re-seed
   localStorage.setItem("acnav_roads_cleared", "true");
   renderCustomRoads();
+
+  // Show undo toast
+  showUndoToast("Road deleted");
+}
+
+function showUndoToast(msg) {
+  // Remove existing toast
+  const old = document.getElementById("undo-toast");
+  if (old) old.remove();
+  if (undoTimer) clearTimeout(undoTimer);
+
+  const toast = document.createElement("div");
+  toast.id = "undo-toast";
+  toast.className = "undo-toast show";
+  toast.innerHTML = `<span>${msg}</span><button id="btn-undo-road">Undo</button>`;
+  document.body.appendChild(toast);
+
+  toast.querySelector("#btn-undo-road").onclick = () => {
+    if (lastDeletedRoad) {
+      customRoads.push(lastDeletedRoad);
+      saveCustomRoads();
+      renderCustomRoads();
+      lastDeletedRoad = null;
+    }
+    toast.classList.remove("show");
+    setTimeout(() => toast.remove(), 300);
+    if (undoTimer) clearTimeout(undoTimer);
+  };
+
+  // Auto-dismiss after 6 seconds
+  undoTimer = setTimeout(() => {
+    toast.classList.remove("show");
+    setTimeout(() => toast.remove(), 300);
+    lastDeletedRoad = null;
+  }, 6000);
 }
 
 // ── DIJKSTRA ROUTING ON CUSTOM ROADS ─────────────────────────────────────────

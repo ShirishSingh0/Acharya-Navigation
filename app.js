@@ -160,8 +160,10 @@ const DEFAULT_ROADS = [
 ];
 
 function seedDefaultRoads() {
-  // Only seed if no roads exist at all (first time user)
-  if (!localStorage.getItem("acnav_roads")) {
+  // Seed defaults if: no roads key exists, OR roads array is empty AND user hasn't manually cleared them
+  const stored = localStorage.getItem("acnav_roads");
+  const userCleared = localStorage.getItem("acnav_roads_cleared");
+  if (!stored || (stored === "[]" && !userCleared)) {
     customRoads = [...DEFAULT_ROADS];
     saveCustomRoads();
   }
@@ -864,6 +866,8 @@ function deleteCustomRoad(id) {
 
   customRoads = customRoads.filter(r => r.id !== id);
   saveCustomRoads();
+  // Mark that user has intentionally deleted roads so defaults don't re-seed
+  localStorage.setItem("acnav_roads_cleared", "true");
   renderCustomRoads();
 }
 

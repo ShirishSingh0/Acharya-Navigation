@@ -1073,22 +1073,36 @@ function showUndoToast(msg) {
 
 // ── DIJKSTRA ROUTING ON CUSTOM ROADS ─────────────────────────────────────────
 
-function findNearestPointOnRoads(loc) {
-  let minDist = Infinity, nearest = null;
+// Find nearest point on any road SEGMENT (not just vertex)
+function findNearestSegmentOnRoads(loc) {
+  const p = { lat: loc.lat || loc[0], lng: loc.lng || loc[1] };
+  let minDist = Infinity, bestPt = null, bestSegA = null, bestSegB = null;
   customRoads.forEach(road => {
+    for (let i = 0; i < road.points.length - 1; i++) {
+      const a = road.points[i], b = road.points[i + 1];
+      const pt = closestPointOnSegment(p, a, b);
+      const d = haversine(p, { lat: pt[0], lng: pt[1] });
+      if (d < minDist) {
+        minDist = d; bestPt = pt; bestSegA = a; bestSegB = b;
+      }
+    }
+    // Also check single vertices (end of roads)
     road.points.forEach(pt => {
-      const d = haversine({ lat: loc.lat || loc[0], lng: loc.lng || loc[1] }, { lat: pt[0], lng: pt[1] });
-      if (d < minDist) { minDist = d; nearest = pt; }
+      const d = haversine(p, { lat: pt[0], lng: pt[1] });
+      if (d < minDist) {
+        minDist = d; bestPt = pt; bestSegA = pt; bestSegB = pt;
+      }
     });
   });
-  return { point: nearest, dist: minDist };
+  return { point: bestPt, dist: minDist, segA: bestSegA, segB: bestSegB };
 }
 
 function buildRoadGraph() {
-  // Build adjacency list from all custom roads
-  const adj = new Map(); // key: "lat,lng" → [{node, weight}]
+  const adj = new Map();
   const key = (pt) => pt[0] + "," + pt[1];
+  const allVertices = []; // Collect all vertices for proximity merging
 
+  // Step 1: Add all road edges
   customRoads.forEach(road => {
     for (let i = 0; i < road.points.length - 1; i++) {
       const a = road.points[i], b = road.points[i + 1];
@@ -1099,7 +1113,32 @@ function buildRoadGraph() {
       adj.get(ka).push({ node: kb, weight: w, pt: b });
       adj.get(kb).push({ node: ka, weight: w, pt: a });
     }
+    road.points.forEach(pt => {
+      const k = key(pt);
+      if (!adj.has(k)) adj.set(k, []);
+      allVertices.push(pt);
+    });
   });
+
+  // Step 2: Auto-connect nearby vertices across different roads (within 15m)
+  const MERGE_DIST = 15; // meters
+  for (let i = 0; i < allVertices.length; i++) {
+    for (let j = i + 1; j < allVertices.length; j++) {
+      const a = allVertices[i], b = allVertices[j];
+      if (a[0] === b[0] && a[1] === b[1]) continue; // same point
+      const d = haversine({ lat: a[0], lng: a[1] }, { lat: b[0], lng: b[1] });
+      if (d < MERGE_DIST) {
+        const ka = key(a), kb = key(b);
+        // Avoid duplicate edges
+        const existing = adj.get(ka) || [];
+        if (!existing.some(e => e.node === kb)) {
+          adj.get(ka).push({ node: kb, weight: d, pt: b });
+          adj.get(kb).push({ node: ka, weight: d, pt: a });
+        }
+      }
+    }
+  }
+
   return { adj, key };
 }
 
@@ -1128,7 +1167,6 @@ function dijkstra(adj, startKey, endKey) {
 
   if (!dist.has(endKey)) return null;
 
-  // Reconstruct path
   const path = [];
   let cur = endKey;
   while (cur) {
@@ -1142,29 +1180,40 @@ function dijkstra(adj, startKey, endKey) {
 function tryCustomRoadRoute(fromLoc, toLoc) {
   if (customRoads.length === 0) return null;
 
-  const nearFrom = findNearestPointOnRoads(fromLoc);
-  const nearTo = findNearestPointOnRoads(toLoc);
+  const nearFrom = findNearestSegmentOnRoads(fromLoc);
+  const nearTo = findNearestSegmentOnRoads(toLoc);
 
-  // Only use custom roads if both endpoints are within 200m of a road
-  if (!nearFrom.point || !nearTo.point || nearFrom.dist > 200 || nearTo.dist > 200) return null;
+  // Only use custom roads if both endpoints are within 300m of a road
+  if (!nearFrom.point || !nearTo.point || nearFrom.dist > 300 || nearTo.dist > 300) return null;
 
   const { adj, key } = buildRoadGraph();
-  const startKey = key(nearFrom.point);
-  const endKey = key(nearTo.point);
 
-  if (startKey === endKey) return null;
+  // Try routing from both segment endpoints to find the best path
+  const fromKeys = [key(nearFrom.segA), key(nearFrom.segB)].filter(k => adj.has(k));
+  const toKeys = [key(nearTo.segA), key(nearTo.segB)].filter(k => adj.has(k));
 
-  const result = dijkstra(adj, startKey, endKey);
-  if (!result) return null;
+  let bestResult = null, bestStartKey = null, bestEndKey = null;
+
+  for (const sk of fromKeys) {
+    for (const ek of toKeys) {
+      if (sk === ek) continue;
+      const result = dijkstra(adj, sk, ek);
+      if (result && (!bestResult || result.distance < bestResult.distance)) {
+        bestResult = result; bestStartKey = sk; bestEndKey = ek;
+      }
+    }
+  }
+
+  if (!bestResult) return null;
 
   const userPt = [fromLoc.lat || fromLoc[0], fromLoc.lng || fromLoc[1]];
   const destPt = [toLoc.lat || toLoc[0], toLoc.lng || toLoc[1]];
-  const totalDist = nearFrom.dist + result.distance + nearTo.dist;
+  const totalDist = nearFrom.dist + bestResult.distance + nearTo.dist;
 
   return {
-    walkToRoad: [userPt, nearFrom.point],       // dotted: user → nearest road point
-    roadPath: result.path,                       // solid: along the road network
-    walkToDest: [nearTo.point, destPt],          // dotted: last road point → destination
+    walkToRoad: [userPt, bestResult.path[0]],
+    roadPath: bestResult.path,
+    walkToDest: [bestResult.path[bestResult.path.length - 1], destPt],
     walkToRoadDist: nearFrom.dist,
     walkToDestDist: nearTo.dist,
     distance: totalDist

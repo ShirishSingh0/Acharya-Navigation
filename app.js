@@ -480,23 +480,52 @@ function haversine(a, b) {
   return R*2*Math.atan2(Math.sqrt(x), Math.sqrt(1-x));
 }
 
+// ── SNAP TO ROAD ─────────────────────────────────────────────────────────────
+// Projects a point onto the nearest segment of any custom road
+function closestPointOnSegment(p, a, b) {
+  const dx = b[1] - a[1], dy = b[0] - a[0];
+  if (dx === 0 && dy === 0) return a; // segment is a point
+  let t = ((p.lng - a[1]) * dx + (p.lat - a[0]) * dy) / (dx * dx + dy * dy);
+  t = Math.max(0, Math.min(1, t));
+  return [a[0] + t * dy, a[1] + t * dx];
+}
+
+function snapToNearestRoad(loc) {
+  if (customRoads.length === 0) return { snapped: loc, dist: Infinity, onRoad: false };
+  let minDist = Infinity, best = null;
+  customRoads.forEach(road => {
+    for (let i = 0; i < road.points.length - 1; i++) {
+      const pt = closestPointOnSegment(loc, road.points[i], road.points[i + 1]);
+      const d = haversine(loc, { lat: pt[0], lng: pt[1] });
+      if (d < minDist) { minDist = d; best = pt; }
+    }
+  });
+  if (!best) return { snapped: loc, dist: Infinity, onRoad: false };
+  return { snapped: { lat: best[0], lng: best[1] }, dist: minDist, onRoad: minDist < 50 };
+}
+
+let rawGpsLoc = null; // Actual GPS position (unsnapped)
+
 // ── START / STOP NAVIGATION ──────────────────────────────────────────────────
 
 function startNav() {
   if (!selBldg) return;
-  navTarget = { ...selBldg }; // Save target BEFORE closing sheet
+  navTarget = { ...selBldg };
   navActive = true;
   document.getElementById("nav-hud").classList.add("active");
   closeSheet();
-  fetchAndDrawRoute(); // First route: no debounce, draw immediately
+  fetchAndDrawRoute();
 }
 
 function stopNav() {
   navActive = false;
   navTarget = null;
+  rawGpsLoc = null;
   if (routeDebounceTimer) { clearTimeout(routeDebounceTimer); routeDebounceTimer = null; }
   document.getElementById("nav-hud").classList.remove("active");
   clearRoute();
+  // Restore user marker to actual GPS position
+  if (rawGpsLoc) { userLoc = rawGpsLoc; updateUserMarker(); }
   map.flyTo(CAMPUS_CENTER, 17, { duration: 1.2, easeLinearity: 0.25 });
 }
 
@@ -517,10 +546,9 @@ function toggleGps() {
   // One-shot for immediate position
   navigator.geolocation.getCurrentPosition(
     p => {
-      userLoc = { lat: p.coords.latitude, lng: p.coords.longitude };
-      updateUserMarker();
+      rawGpsLoc = { lat: p.coords.latitude, lng: p.coords.longitude };
+      applyGpsPosition(rawGpsLoc);
       map.flyTo([userLoc.lat, userLoc.lng], 17, { duration: 1 });
-      if (navActive) requestRouteUpdate();
     },
     err => console.warn("Initial GPS:", err),
     { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
@@ -529,23 +557,37 @@ function toggleGps() {
   // Continuous tracking
   watchId = navigator.geolocation.watchPosition(
     p => {
-      userLoc = { lat: p.coords.latitude, lng: p.coords.longitude };
-      updateUserMarker();
+      rawGpsLoc = { lat: p.coords.latitude, lng: p.coords.longitude };
+      applyGpsPosition(rawGpsLoc);
       if (navActive) {
-        // Smooth follow without jarring setView
         map.panTo([userLoc.lat, userLoc.lng], { animate: true, duration: 0.5 });
-        requestRouteUpdate(); // Debounced — won't flood OSRM
+        requestRouteUpdate();
       }
     },
     err => {
       console.warn("GPS error:", err.code, err.message);
-      if (err.code === 1) { // PERMISSION_DENIED
+      if (err.code === 1) {
         alert("GPS access denied. Please enable Location in your phone Settings > Privacy > Location Services, and also allow it in your browser.");
         btn.classList.remove("active"); btn.style.color = "";
       }
     },
     { enableHighAccuracy: true, timeout: 15000, maximumAge: 3000 }
   );
+}
+
+// Apply GPS: snap to road when navigating, raw position otherwise
+function applyGpsPosition(gps) {
+  if (navActive && customRoads.length > 0) {
+    const snap = snapToNearestRoad(gps);
+    if (snap.onRoad) {
+      userLoc = snap.snapped;
+    } else {
+      userLoc = gps; // Too far from any road, use raw GPS
+    }
+  } else {
+    userLoc = gps;
+  }
+  updateUserMarker();
 }
 
 // ── SEARCH ───────────────────────────────────────────────────────────────────

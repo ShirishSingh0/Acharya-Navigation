@@ -386,77 +386,23 @@ async function fetchAndDrawRoute() {
     return;
   }
 
-  // ── FALL BACK TO OSRM ──
-  // Try OSRM profiles in order: foot → driving → straight line fallback
-  const profiles = ["foot", "driving"];
-  let routeData = null;
+  // ── FALLBACK: Straight dotted line when no custom roads connect ──
+  console.log("No custom road route found, using straight-line guide");
+  const coords = [[fromLat, fromLng], [toLat, toLng]];
+  const d = haversine(userLoc, navTarget);
+  const mins = Math.max(1, Math.ceil(d / 80));
 
-  for (const profile of profiles) {
-    const url = `https://router.project-osrm.org/route/v1/${profile}/${fromLng},${fromLat};${toLng},${toLat}?overview=full&geometries=geojson&steps=true`;
-    try {
-      const res = await fetchWithTimeout(url, 8000);
-      if (!res.ok) continue;
-      const data = await res.json();
-      if (data.code === "Ok" && data.routes && data.routes.length > 0) {
-        routeData = data.routes[0];
-        // For driving profile, recalculate duration as walking speed (~80m/min)
-        if (profile === "driving") {
-          routeData._walkingDuration = routeData.distance / 1.33; // 80m/min = 1.33m/s
-        }
-        break;
-      }
-    } catch (err) {
-      console.warn(`OSRM ${profile} failed:`, err.message);
-      continue;
-    }
-  }
+  // Draw dotted guide line
+  drawDottedSegment(coords);
+  drawRouteMarkers(coords);
+  map.fitBounds(L.latLngBounds(coords), { padding: [80, 80] });
+  updateHUD(d, mins);
 
-  // Check if this request is still the latest (prevents stale draws)
-  if (thisRequestId !== routeRequestId) return;
-
-  if (routeData) {
-    // ── SUCCESS: Draw the OSRM route ──
-    const coords = routeData.geometry.coordinates.map(c => [c[1], c[0]]);
-    const distMeters = routeData.distance;
-    const durationSecs = routeData._walkingDuration || routeData.duration;
-    const mins = Math.max(1, Math.round(durationSecs / 60));
-
-    drawRouteLines(coords);
-    drawRouteMarkers(coords);
-
-    // Fit map to route
-    map.fitBounds(L.latLngBounds(coords), { padding: [80, 100], maxZoom: 18 });
-
-    // Update HUD
-    updateHUD(distMeters, mins);
-
-    // Navigation instruction
-    if (distMeters < 25) {
-      hud.textContent = "🎉 You've arrived at " + (SHORT[navTarget.name] || navTarget.name);
-    } else {
-      const steps = routeData.legs[0].steps;
-      if (steps.length > 1 && steps[0].maneuver) {
-        const dir = steps[0].maneuver.modifier || "";
-        const road = steps[0].name || "the path";
-        hud.textContent = `Head ${dir} on ${road}`;
-      } else {
-        hud.textContent = `Walk to ${SHORT[navTarget.name] || navTarget.name}`;
-      }
-    }
-
+  if (d < 25) {
+    hud.textContent = "🎉 You've arrived at " + (SHORT[navTarget.name] || navTarget.name);
+  } else if (customRoads.length === 0) {
+    hud.textContent = `Draw roads to get directions`;
   } else {
-    // ── FALLBACK: Straight line when OSRM is completely unavailable ──
-    console.warn("All OSRM profiles failed, using straight-line fallback");
-    const coords = [[fromLat, fromLng], [toLat, toLng]];
-
-    routeLayers.push(
-      L.polyline(coords, { color: '#007aff', opacity: 0.5, weight: 5, dashArray: '10,8', lineCap: 'round' }).addTo(map)
-    );
-    map.fitBounds(L.latLngBounds(coords), { padding: [80, 80] });
-
-    const d = haversine(userLoc, navTarget);
-    const mins = Math.max(1, Math.ceil(d / 80));
-    updateHUD(d, mins);
     hud.textContent = `Walk towards ${SHORT[navTarget.name] || navTarget.name}`;
   }
 }

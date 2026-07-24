@@ -163,13 +163,40 @@ function applyMapPerspective() {
 
 // ── DEFAULT CAMPUS ROADS (seeded into customRoads on first use) ─────────────
 const DEFAULT_ROADS = [
-  { id:"main_road_1", points:[[13.087,77.483],[13.0856,77.4835],[13.0844,77.4836],[13.0838,77.4838],[13.0828,77.4838],[13.0823,77.4842],[13.0815,77.4845]] },
-  { id:"main_road_2", points:[[13.0856,77.4835],[13.0855,77.4842],[13.0848,77.484]] },
-  { id:"main_road_3", points:[[13.0844,77.4836],[13.0843,77.4828]] },
-  { id:"main_road_4", points:[[13.0838,77.4838],[13.0837,77.4845]] },
-  { id:"main_road_5", points:[[13.0828,77.4838],[13.0832,77.4848]] },
-  { id:"main_road_6", points:[[13.0828,77.4838],[13.0825,77.4828]] },
-  { id:"main_road_7", points:[[13.0823,77.4842],[13.0825,77.4828]] }
+  // Spine: Physiotherapy block down to central junction
+  { id:"r_spine_north", points:[[13.0888,77.4862],[13.0882,77.4861],[13.0878,77.4860],[13.0872,77.4861],[13.0867,77.4860],[13.0862,77.4861]] },
+  // Upper horizontal: Lake/Gate area east to central junction
+  { id:"r_upper_horiz", points:[[13.0862,77.4830],[13.0860,77.4838],[13.0860,77.4845],[13.0860,77.4852],[13.0862,77.4861]] },
+  // Lake spur
+  { id:"r_lake", points:[[13.0870,77.4825],[13.0866,77.4828],[13.0862,77.4830]] },
+  // Stadium loop: Gate down around stadium to Udupi
+  { id:"r_stadium_loop", points:[[13.0862,77.4830],[13.0858,77.4828],[13.0855,77.4830],[13.0850,77.4827],[13.0847,77.4825]] },
+  // Forest branch
+  { id:"r_forest", points:[[13.0847,77.4825],[13.0847,77.4815],[13.0846,77.4805],[13.0845,77.4800]] },
+  // Central backbone: junction south through campus
+  { id:"r_central", points:[[13.0862,77.4861],[13.0858,77.4858],[13.0855,77.4860],[13.0852,77.4863],[13.0850,77.4865],[13.0847,77.4862],[13.0843,77.4858]] },
+  // East road: central to Admin, Bike Parking, Gate 3
+  { id:"r_east_main", points:[[13.0855,77.4860],[13.0856,77.4868],[13.0858,77.4875],[13.0858,77.4880],[13.0856,77.4888],[13.0855,77.4895],[13.0855,77.4900],[13.0855,77.4905]] },
+  // Bike parking branch
+  { id:"r_bikeparking", points:[[13.0856,77.4888],[13.0853,77.4892],[13.0852,77.4895]] },
+  // West corridor: Udupi south to Pharmacy
+  { id:"r_west_south", points:[[13.0847,77.4825],[13.0842,77.4828],[13.0838,77.4830],[13.0833,77.4832],[13.0828,77.4833],[13.0823,77.4835],[13.0818,77.4835]] },
+  // Central south: Football down to Library/EEE
+  { id:"r_central_south", points:[[13.0843,77.4858],[13.0840,77.4853],[13.0837,77.4850],[13.0834,77.4847],[13.0832,77.4843],[13.0828,77.4842],[13.0825,77.4843],[13.0822,77.4845]] },
+  // CSE/ISE branch from Admission area
+  { id:"r_cse_branch", points:[[13.0850,77.4865],[13.0847,77.4870],[13.0843,77.4873],[13.0840,77.4875]] },
+  // CSE to ANA
+  { id:"r_cse_ana", points:[[13.0840,77.4875],[13.0838,77.4880],[13.0836,77.4885],[13.0835,77.4890]] },
+  // Volleyball to Mechanical to AIGS
+  { id:"r_vol_mech_aigs", points:[[13.0837,77.4850],[13.0834,77.4854],[13.0831,77.4858],[13.0829,77.4862],[13.0827,77.4868],[13.0826,77.4873],[13.0825,77.4878]] },
+  // AIGS to ANA connection
+  { id:"r_aigs_ana", points:[[13.0825,77.4878],[13.0828,77.4882],[13.0831,77.4886],[13.0835,77.4890]] },
+  // Library connector
+  { id:"r_library", points:[[13.0834,77.4847],[13.0832,77.4843],[13.0832,77.4840]] },
+  // Lower horizontal: EEE to Pharmacy
+  { id:"r_lower_horiz", points:[[13.0822,77.4845],[13.0820,77.4842],[13.0818,77.4838],[13.0818,77.4835]] },
+  // Admission south to Football connector
+  { id:"r_admission_south", points:[[13.0850,77.4865],[13.0848,77.4860],[13.0845,77.4857],[13.0843,77.4855],[13.0843,77.4858]] }
 ];
 
 function seedDefaultRoads() {

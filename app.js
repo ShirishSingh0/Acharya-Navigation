@@ -54,6 +54,30 @@ function initDarkMode() {
     if (btn) btn.innerHTML = isDark ? `<i class="fa-solid fa-sun"></i>` : `<i class="fa-solid fa-moon"></i>`;
   }, 0);
 }
+// All campus buildings (restored from user's map)
+const DEFAULT_BUILDINGS = [
+  { id:"gate", name:"Main Entrance Gateway", type:"gate", lat:13.0860, lng:77.4830, icon:"fa-door-open", desc:"The grand main entrance to Acharya Institutes campus.", depts:[], teachers:[] },
+  { id:"gate3", name:"Gate No.3", type:"gate", lat:13.0855, lng:77.4905, icon:"fa-door-open", desc:"Gate No.3 — side entrance.", depts:[], teachers:[] },
+  { id:"admin", name:"Admin's/Principles Office", type:"facility", lat:13.0858, lng:77.4880, icon:"fa-building-columns", desc:"Administrative offices and principal's office.", depts:[], teachers:[] },
+  { id:"physio", name:"Physiotherapy block", type:"academic", lat:13.0878, lng:77.4860, icon:"fa-hand-holding-medical", desc:"Physiotherapy department block.", depts:[], teachers:[] },
+  { id:"gym", name:"Acharya Gym", type:"sports", lat:13.0865, lng:77.4855, icon:"fa-dumbbell", desc:"Campus fitness centre and gymnasium.", depts:[], teachers:[] },
+  { id:"lake", name:"Acharya Lake", type:"nature", lat:13.0870, lng:77.4825, icon:"fa-water", desc:"Scenic lake and eco-preserve.", depts:[], teachers:[] },
+  { id:"stadium", name:"Stadium", type:"sports", lat:13.0853, lng:77.4830, icon:"fa-futbol", desc:"Multi-sport stadium.", depts:[], teachers:[] },
+  { id:"basketball", name:"Basket Ball court", type:"sports", lat:13.0855, lng:77.4857, icon:"fa-basketball", desc:"Outdoor basketball courts.", depts:[], teachers:[] },
+  { id:"admission", name:"Admission Office", type:"facility", lat:13.0850, lng:77.4865, icon:"fa-clipboard-list", desc:"Student admissions and enquiry office.", depts:[], teachers:[] },
+  { id:"bikeparking", name:"BIKE PARKING", type:"facility", lat:13.0852, lng:77.4895, icon:"fa-motorcycle", desc:"Two-wheeler parking area.", depts:[], teachers:[] },
+  { id:"udupi", name:"Udupi Food Court", type:"facility", lat:13.0845, lng:77.4825, icon:"fa-utensils", desc:"Campus dining hub — Udupi style food court.", depts:[], teachers:[] },
+  { id:"forest", name:"Acharya Forest", type:"nature", lat:13.0845, lng:77.4800, icon:"fa-tree", desc:"Green campus forest zone.", depts:[], teachers:[] },
+  { id:"football", name:"Football Turf", type:"sports", lat:13.0840, lng:77.4845, icon:"fa-futbol", desc:"FIFA-standard football turf.", depts:[], teachers:[] },
+  { id:"volleyball", name:"Volleyball Court", type:"sports", lat:13.0835, lng:77.4850, icon:"fa-volleyball", desc:"Outdoor volleyball court.", depts:[], teachers:[] },
+  { id:"library", name:"CENTRAL LIBRARY", type:"facility", lat:13.0832, lng:77.4840, icon:"fa-book-open", desc:"Central library with 1,00,000+ volumes.", depts:[], teachers:[] },
+  { id:"cseise", name:"CSE AND ISE BLOCK", type:"academic", lat:13.0840, lng:77.4875, icon:"fa-laptop-code", desc:"Computer Science and Information Science block.", depts:[], teachers:[] },
+  { id:"ana", name:"ANA BLOCK", type:"academic", lat:13.0835, lng:77.4890, icon:"fa-building", desc:"ANA academic block.", depts:[], teachers:[] },
+  { id:"aigs", name:"AIGS BLOCK", type:"academic", lat:13.0825, lng:77.4878, icon:"fa-graduation-cap", desc:"Acharya Institute of Graduate Studies block.", depts:[], teachers:[] },
+  { id:"mech", name:"Mechanical Block", type:"academic", lat:13.0828, lng:77.4862, icon:"fa-gears", desc:"Mechanical Engineering department.", depts:[], teachers:[] },
+  { id:"eee", name:"Acharya's Electrical/Electronics Department", type:"academic", lat:13.0822, lng:77.4845, icon:"fa-bolt", desc:"EEE and ECE department.", depts:[], teachers:[] },
+  { id:"pharmacy", name:"Acharya And BM reddy College of Pharmacy", type:"academic", lat:13.0818, lng:77.4835, icon:"fa-file-prescription", desc:"PCI-approved pharmacy programmes.", depts:[], teachers:[] }
+];
 
 function initDB() {
   const d = localStorage.getItem("acnav_v4");
@@ -62,18 +86,7 @@ function initDB() {
     const old = localStorage.getItem("acnav_v3");
     if (old) { db = JSON.parse(old); saveDB(); }
     else {
-      db = [
-        { id:"gate", name:"Main Entrance Gateway", type:"gate", lat:13.0860, lng:77.4830, icon:"fa-door-open", desc:"The grand main entrance to Acharya Institutes campus.", depts:[] },
-        { id:"admin", name:"Central Administrative Block", type:"facility", lat:13.0855, lng:77.4842, icon:"fa-building-columns", desc:"Administrative offices and registrar.", depts:[] },
-        { id:"asd", name:"Acharya School of Design", type:"academic", lat:13.0852, lng:77.4832, icon:"fa-palette", desc:"Design school offering Communication, Fashion, and Product Design.", depts:[] },
-        { id:"aigs", name:"Acharya Institute of Graduate Studies", type:"academic", lat:13.0848, lng:77.4840, icon:"fa-graduation-cap", desc:"Science, Arts, Commerce, and Management programmes.", depts:[] },
-        { id:"ait", name:"Acharya Institute of Technology", type:"academic", lat:13.0841, lng:77.4837, icon:"fa-laptop-code", desc:"Flagship engineering institution — CSE, ISE, ECE, Mech, Civil.", depts:[] },
-        { id:"canteen", name:"Central Food Court", type:"facility", lat:13.0843, lng:77.4828, icon:"fa-utensils", desc:"Campus dining hub with multiple cuisine counters.", depts:[] },
-        { id:"library", name:"Learning Resource Centre", type:"facility", lat:13.0837, lng:77.4845, icon:"fa-book-open", desc:"Three-storey knowledge hub with 1,00,000+ volumes.", depts:[] },
-        { id:"pharmacy", name:"College of Pharmacy", type:"academic", lat:13.0832, lng:77.4848, icon:"fa-file-prescription", desc:"PCI-approved pharmacy programmes.", depts:[] },
-        { id:"stadium", name:"Acharya Stadium", type:"sports", lat:13.0825, lng:77.4828, icon:"fa-futbol", desc:"10,000+ seating capacity, FIFA-standard turf.", depts:[] },
-        { id:"lake", name:"Acharya Eco Lake", type:"nature", lat:13.0820, lng:77.4845, icon:"fa-water", desc:"4-acre artificial lake and eco-preserve.", depts:[] }
-      ];
+      db = DEFAULT_BUILDINGS.map(b => ({...b, depts:[...b.depts], teachers:[...b.teachers]}));
       saveDB();
     }
   }
@@ -862,18 +875,7 @@ function resetMapToDefault() {
   localStorage.removeItem("acnav_roads_cleared");
 
   // Re-init buildings from scratch
-  db = [
-    { id:"gate", name:"Main Entrance Gateway", type:"gate", lat:13.0860, lng:77.4830, icon:"fa-door-open", desc:"The grand main entrance to Acharya Institutes campus.", depts:[] },
-    { id:"admin", name:"Central Administrative Block", type:"facility", lat:13.0855, lng:77.4842, icon:"fa-building-columns", desc:"Administrative offices and registrar.", depts:[] },
-    { id:"asd", name:"Acharya School of Design", type:"academic", lat:13.0852, lng:77.4832, icon:"fa-palette", desc:"Design school offering Communication, Fashion, and Product Design.", depts:[] },
-    { id:"aigs", name:"Acharya Institute of Graduate Studies", type:"academic", lat:13.0848, lng:77.4840, icon:"fa-graduation-cap", desc:"Science, Arts, Commerce, and Management programmes.", depts:[] },
-    { id:"ait", name:"Acharya Institute of Technology", type:"academic", lat:13.0841, lng:77.4837, icon:"fa-laptop-code", desc:"Flagship engineering institution — CSE, ISE, ECE, Mech, Civil.", depts:[] },
-    { id:"canteen", name:"Central Food Court", type:"facility", lat:13.0843, lng:77.4828, icon:"fa-utensils", desc:"Campus dining hub with multiple cuisine counters.", depts:[] },
-    { id:"library", name:"Learning Resource Centre", type:"facility", lat:13.0837, lng:77.4845, icon:"fa-book-open", desc:"Three-storey knowledge hub with 1,00,000+ volumes.", depts:[] },
-    { id:"pharmacy", name:"College of Pharmacy", type:"academic", lat:13.0832, lng:77.4848, icon:"fa-file-prescription", desc:"PCI-approved pharmacy programmes.", depts:[] },
-    { id:"stadium", name:"Acharya Stadium", type:"sports", lat:13.0825, lng:77.4828, icon:"fa-futbol", desc:"10,000+ seating capacity, FIFA-standard turf.", depts:[] },
-    { id:"lake", name:"Acharya Eco Lake", type:"nature", lat:13.0820, lng:77.4845, icon:"fa-water", desc:"4-acre artificial lake and eco-preserve.", depts:[] }
-  ];
+  db = DEFAULT_BUILDINGS.map(b => ({...b, depts:[...b.depts], teachers:[...b.teachers]}));
   saveDB();
 
   // Re-init roads from defaults

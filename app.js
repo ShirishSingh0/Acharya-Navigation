@@ -940,11 +940,28 @@ function startDrawingRoad() {
 }
 
 function addDrawPoint(lat, lng) {
-  const pt = [+lat.toFixed(6), +lng.toFixed(6)];
+  let pt = [+lat.toFixed(6), +lng.toFixed(6)];
+  let snapped = false;
+
+  // Auto-snap to nearest existing road vertex if within 50m
+  const SNAP_DIST = 50; // meters
+  let minDist = Infinity, bestVertex = null;
+  customRoads.forEach(road => {
+    road.points.forEach(v => {
+      const d = haversine({ lat: pt[0], lng: pt[1] }, { lat: v[0], lng: v[1] });
+      if (d < minDist) { minDist = d; bestVertex = v; }
+    });
+  });
+  if (bestVertex && minDist < SNAP_DIST) {
+    pt = [bestVertex[0], bestVertex[1]];
+    snapped = true;
+  }
+
   drawPoints.push(pt);
 
-  // Add a waypoint dot marker
-  const dotIcon = L.divIcon({ className: '', html: '<div class="road-waypoint"></div>', iconSize: [12, 12], iconAnchor: [6, 6] });
+  // Add a waypoint dot marker (green if snapped)
+  const dotClass = snapped ? 'road-waypoint snapped' : 'road-waypoint';
+  const dotIcon = L.divIcon({ className: '', html: `<div class="${dotClass}"></div>`, iconSize: [12, 12], iconAnchor: [6, 6] });
   const dotMarker = L.marker(pt, { icon: dotIcon, interactive: false }).addTo(map);
   drawWaypointMarkers.push(dotMarker);
 
@@ -958,7 +975,8 @@ function addDrawPoint(lat, lng) {
   }
 
   // Update UI
-  document.getElementById("road-point-count").textContent = drawPoints.length + (drawPoints.length === 1 ? " point" : " points");
+  const snapInfo = snapped ? ` (snapped ${Math.round(minDist)}m)` : '';
+  document.getElementById("road-point-count").textContent = drawPoints.length + (drawPoints.length === 1 ? " point" : " points") + snapInfo;
   document.getElementById("btn-road-done").disabled = drawPoints.length < 2;
 }
 
@@ -1118,8 +1136,8 @@ function buildRoadGraph() {
     });
   });
 
-  // Step 2: Auto-connect nearby vertices across different roads (within 30m)
-  const MERGE_DIST = 30;
+  // Step 2: Auto-connect nearby vertices across different roads (within 50m)
+  const MERGE_DIST = 50;
   for (let i = 0; i < allVertices.length; i++) {
     for (let j = i + 1; j < allVertices.length; j++) {
       const a = allVertices[i], b = allVertices[j];
